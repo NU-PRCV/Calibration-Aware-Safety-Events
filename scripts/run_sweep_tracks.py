@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Calibration-noise sweep on predicted C1 tracks (and an oracle of GT boxes).
 
-Same wide 4-point layout and eps levels as the ground-truth-track sweep, but
-each trial projects detector/tracker box bottoms through the *estimated*
-homography. The H*-based idmap is held fixed so identity scores only change
-through geometry, not through rematching. Zone and dwell use the full
-on-ground feet; proximity uses the 1 m-inset inner area, matching
-scripts/run_events_on_tracks.py. Each trial is scored with both identity and
-anonymous matching.
+Projects detector/tracker box bottoms through the estimated homography. The
+H*-based idmap is held fixed. Writes a checkpoint CSV so a killed run can resume.
 
-Writes outputs/sweep_C1_pred_tracks.csv as a checkpoint so a killed run can
-resume. Pass --force to delete that file and recompute every trial.
+Inputs:  results/tracks/ + id maps, configs/events.yaml, gt_events_C1.csv,
+         gt_events_C1_proximity_inner.csv, sweep_C1_gt_tracks.csv (for plots)
+Outputs: outputs/sweep_C1_pred_tracks.csv and F1 / relative-F1 plots
+
+Example:
+    python scripts/run_sweep_tracks.py --force
+    python scripts/run_sweep_tracks.py          # resume from checkpoint
 """
 
 from __future__ import annotations
@@ -34,7 +34,13 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.events import load_event_config
 from src.geometry import image_to_world
 from src.perturb import (
@@ -267,7 +273,9 @@ def run_trial_tracks(
     for scoring_name, scores in (("identity", identity), ("anonymous", anonymous)):
         for event_type in EVENT_TYPES:
             result[f"f1_{event_type}_{scoring_name}"] = float(scores[f"f1_{event_type}"])
-            result[f"precision_{event_type}_{scoring_name}"] = float(scores[f"precision_{event_type}"])
+            result[f"precision_{event_type}_{scoring_name}"] = float(
+                scores[f"precision_{event_type}"]
+            )
             result[f"recall_{event_type}_{scoring_name}"] = float(scores[f"recall_{event_type}"])
     return result
 
@@ -309,7 +317,11 @@ def _run_sweep(
     completed: dict[tuple[str, float, int], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Run every (model, eps, seed), reusing the trial that was timed."""
-    timed_key = (str(timed_result["model"]), float(timed_result["eps_px"]), int(timed_result["seed"]))
+    timed_key = (
+        str(timed_result["model"]),
+        float(timed_result["eps_px"]),
+        int(timed_result["seed"]),
+    )
     completed = dict(completed)
     completed[timed_key] = timed_result
     all_jobs = _jobs(models)
@@ -386,7 +398,9 @@ def _mean_f1_table(frame: pd.DataFrame, models: list[str]) -> pd.DataFrame:
             row: dict[str, Any] = {"model": model, "eps_px": float(eps_px)}
             for scoring in SCORING_KINDS:
                 for event_type in EVENT_TYPES:
-                    values = _group_values(frame, model, float(eps_px), f"f1_{event_type}_{scoring}")
+                    values = _group_values(
+                        frame, model, float(eps_px), f"f1_{event_type}_{scoring}"
+                    )
                     mean = float(np.mean(values))
                     base = baselines[(scoring, event_type)]
                     row[f"f1_{event_type}_{scoring}"] = mean
@@ -519,7 +533,9 @@ def _plot_f1_vs_eps(
             ax.set_ylim(0.0, 1.05)
         ax.set_ylabel(ylabel)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle(title, y=1.14)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -540,7 +556,9 @@ def _column_order(columns: list[str]) -> list[str]:
     return ordered
 
 
-def _load_models(tracks_dir: Path, cam_id: str, annotations: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def _load_models(
+    tracks_dir: Path, cam_id: str, annotations: pd.DataFrame
+) -> dict[str, pd.DataFrame]:
     """Oracle feet plus the four default track files, idmap already applied."""
     model_feet: dict[str, pd.DataFrame] = {ORACLE_MODEL: prepare_oracle_feet(annotations)}
     print(f"{ORACLE_MODEL}: {len(model_feet[ORACLE_MODEL])} foot pixels")
@@ -551,7 +569,9 @@ def _load_models(tracks_dir: Path, cam_id: str, annotations: pd.DataFrame) -> di
         name = path.stem.removeprefix(f"tracks_{cam_id}_")
         idmap_path = tracks_dir / f"idmap_{cam_id}_{name}.csv"
         if not idmap_path.is_file():
-            raise FileNotFoundError(f"Missing {idmap_path.name}. Run scripts/check_tracks.py first.")
+            raise FileNotFoundError(
+                f"Missing {idmap_path.name}. Run scripts/check_tracks.py first."
+            )
         feet, dropped = prepare_model_feet(pd.read_csv(path), pd.read_csv(idmap_path))
         model_feet[name] = feet
         print(f"{name}: {len(feet)} foot pixels (dropped {dropped} duplicate person rows)")

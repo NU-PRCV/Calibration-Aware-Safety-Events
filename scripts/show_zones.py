@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Draw the configured ground zones in a top-down view and on the first frame."""
+"""Draw the configured ground zones in a top-down view and on the first frame.
+
+Inputs:  configs/events.yaml (C1) or configs/events_<cam>.yaml; annotations
+Outputs: outputs/zones_birdseye_<cam>.png, outputs/zones_image_<cam>.png
+
+Example:
+    python scripts/show_zones.py --cam C1
+    python scripts/show_zones.py --cam C6
+"""
 
 from __future__ import annotations
 
@@ -16,7 +24,13 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.events import event_config_path, load_event_config, signed_distance_to_polygon
 from src.geometry import ground_homography, load_camera_calibration, world_to_image
 
@@ -146,7 +160,9 @@ def save_image_overlay(
         uv = world_to_image(H, polygon)
         pixels = np.round(uv).astype(np.int32).reshape(-1, 1, 2)
         color = _bgr(_zone_color(str(zone["id"]), index))
-        cv2.polylines(blended, [pixels], isClosed=True, color=color, thickness=2, lineType=cv2.LINE_AA)
+        cv2.polylines(
+            blended, [pixels], isClosed=True, color=color, thickness=2, lineType=cv2.LINE_AA
+        )
         center = world_to_image(H, polygon.mean(axis=0).reshape(1, 2))[0]
         origin = (int(round(float(center[0]))), int(round(float(center[1]))))
         cv2.putText(

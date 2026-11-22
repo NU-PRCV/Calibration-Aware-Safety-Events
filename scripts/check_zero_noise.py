@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Check that zero calibration noise reproduces ground-truth events exactly."""
+"""Check that zero calibration noise reproduces ground-truth events exactly.
+
+Inputs:  configs/events.yaml, annotations, outputs/gt_events_C1.csv
+Outputs: printed PASS/FAIL for several seeds at eps=0 (and a noisy contrast).
+
+Example:
+    python scripts/check_zero_noise.py
+"""
 
 from __future__ import annotations
 
@@ -107,7 +114,9 @@ def _print_score_table(result: dict, zone_ids: list[str]) -> None:
     for event_type, zone_id in rows:
         suffix = event_type if zone_id == "all" else f"{event_type}_{zone_id}"
         label = event_type if zone_id == "all" else f"{event_type}/{zone_id}"
-        delay = result.get(f"start_delay_mean_{event_type}", math.nan) if zone_id == "all" else math.nan
+        delay = (
+            result.get(f"start_delay_mean_{event_type}", math.nan) if zone_id == "all" else math.nan
+        )
         delay_text = _format(delay) if zone_id == "all" else ""
         print(
             f"  {label:<22} {_format(result[f'precision_{suffix}']):>10} "
@@ -148,9 +157,7 @@ def main() -> None:
         passed, reasons = _zero_noise_ok(result)
         status = "PASS" if passed else "FAIL"
         detail = "" if passed else "  " + ", ".join(reasons)
-        print(
-            f"  seed {seed}: max position error {result['pos_max_m']:.3e} m  {status}{detail}"
-        )
+        print(f"  seed {seed}: max position error {result['pos_max_m']:.3e} m  {status}{detail}")
         zero_ok = zero_ok and passed
     if zero_ok and hull_ok:
         print(

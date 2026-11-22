@@ -17,20 +17,22 @@ tests run without them.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 
 from src.data import (
     ANNOTATED_FPS,
-    CELL_SIZE_M,
     DATA_ROOT,
-    GRID_HEIGHT,
-    GRID_WIDTH,
-    ORIGIN_X_M,
-    ORIGIN_Y_M,
+    DEFAULT_BOUNDARY_MARGIN_M,
+    GROUND_MATCH_DISTANCE_M,
+    GROUND_X_MAX_M,
+    GROUND_X_MIN_M,
+    GROUND_Y_MAX_M,
+    GROUND_Y_MIN_M,
     annotation_dir,
     normalize_cam_id,
     resolve_dataset_root,
@@ -60,18 +62,8 @@ TRACK_COLUMNS = [
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 # COCO class 0 is "person".
 PERSON_CLASS_ID = 0
-# Annotated ground rectangle: origin (-3, -9) m and a 12 m x 36 m plane.
-# A foot on the boundary still counts as inside.
-GROUND_X_MIN_M = ORIGIN_X_M
-GROUND_X_MAX_M = ORIGIN_X_M + GRID_WIDTH * CELL_SIZE_M
-GROUND_Y_MIN_M = ORIGIN_Y_M
-GROUND_Y_MAX_M = ORIGIN_Y_M + GRID_HEIGHT * CELL_SIZE_M
-# A predicted foot farther than this from every ground-truth foot is unmatched.
-GROUND_MATCH_DISTANCE_M = 0.5
-# Shrink the ground rectangle by this many meters on every side before counting
-# TP / FP / FN. Matching still uses the full rectangle; unmatched feet in the
-# band between the full and inner rectangles are ignored.
-DEFAULT_BOUNDARY_MARGIN_M = 1.0
+# Re-export shared ground-plane constants so existing imports keep working.
+# Definitions live in src.data.
 # Original WILDTRACK frame. A box bottom within 5 px of 1080 is treated as cut off.
 IMAGE_WIDTH = 1920
 IMAGE_HEIGHT = 1080
@@ -109,7 +101,11 @@ def annotated_frames(root: str | Path, cam_id: str | int) -> pd.DataFrame:
     rows = []
     for frame_idx, stem in enumerate(stems):
         image = next(
-            (folder / f"{stem}{suffix}" for suffix in IMAGE_SUFFIXES if (folder / f"{stem}{suffix}").is_file()),
+            (
+                folder / f"{stem}{suffix}"
+                for suffix in IMAGE_SUFFIXES
+                if (folder / f"{stem}{suffix}").is_file()
+            ),
             None,
         )
         if image is None:
@@ -130,7 +126,9 @@ def annotated_frames(root: str | Path, cam_id: str | int) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
-def detection_rows(frame: dict[str, Any] | pd.Series, xyxy: np.ndarray, scores: np.ndarray) -> list[dict[str, Any]]:
+def detection_rows(
+    frame: dict[str, Any] | pd.Series, xyxy: np.ndarray, scores: np.ndarray
+) -> list[dict[str, Any]]:
     """Turn one frame's boxes (N, 4) and scores (N,) into detection CSV rows."""
     boxes = np.asarray(xyxy, dtype=np.float64).reshape(-1, 4)
     confidences = np.asarray(scores, dtype=np.float64).reshape(-1)
@@ -157,7 +155,9 @@ def _check_columns(table: pd.DataFrame, columns: list[str], what: str) -> None:
         raise ValueError(f"{what} is missing columns: {missing}")
 
 
-def validate_boxes(table: pd.DataFrame, width: int = 1920, height: int = 1080, tol: float = 2.0) -> None:
+def validate_boxes(
+    table: pd.DataFrame, width: int = 1920, height: int = 1080, tol: float = 2.0
+) -> None:
     """Raise if any box is empty, flipped, or far outside the image."""
     if table.empty:
         return
@@ -206,7 +206,9 @@ def save_csv(table: pd.DataFrame, columns: list[str], path: str | Path) -> Path:
 class Tracker(Protocol):
     """One frame in, the confirmed tracks seen in that frame out."""
 
-    def update(self, boxes: np.ndarray, scores: np.ndarray, image_path: str) -> list[tuple[int, np.ndarray, float]]:
+    def update(
+        self, boxes: np.ndarray, scores: np.ndarray, image_path: str
+    ) -> list[tuple[int, np.ndarray, float]]:
         """Return (track_id, xyxy box, score) for tracks matched in this frame."""
         ...
 
@@ -243,7 +245,9 @@ class ByteTrackTracker:
             kwargs["minimum_consecutive_frames"] = int(minimum_consecutive_frames)
         self._tracker = sv.ByteTrack(**kwargs)
 
-    def update(self, boxes: np.ndarray, scores: np.ndarray, image_path: str) -> list[tuple[int, np.ndarray, float]]:
+    def update(
+        self, boxes: np.ndarray, scores: np.ndarray, image_path: str
+    ) -> list[tuple[int, np.ndarray, float]]:
         detections = self._sv.Detections(
             xyxy=np.asarray(boxes, dtype=np.float32).reshape(-1, 4),
             confidence=np.asarray(scores, dtype=np.float32).reshape(-1),
@@ -295,12 +299,18 @@ class DeepSortTracker:
             embedder_gpu=use_gpu,
         )
 
-    def update(self, boxes: np.ndarray, scores: np.ndarray, image_path: str) -> list[tuple[int, np.ndarray, float]]:
+    def update(
+        self, boxes: np.ndarray, scores: np.ndarray, image_path: str
+    ) -> list[tuple[int, np.ndarray, float]]:
         image = self._cv2.imread(image_path, self._cv2.IMREAD_COLOR)
         if image is None:
             raise FileNotFoundError(f"Could not read {image_path}")
         raw = [
-            ([float(box[0]), float(box[1]), float(box[2] - box[0]), float(box[3] - box[1])], float(score), PERSON_CLASS_ID)
+            (
+                [float(box[0]), float(box[1]), float(box[2] - box[0]), float(box[3] - box[1])],
+                float(score),
+                PERSON_CLASS_ID,
+            )
             for box, score in zip(np.asarray(boxes).reshape(-1, 4), np.asarray(scores).reshape(-1))
             if score >= self._min_score
         ]
@@ -312,7 +322,13 @@ class DeepSortTracker:
             if box is None:
                 continue
             score = track.get_det_conf()
-            out.append((int(track.track_id), np.asarray(box, dtype=np.float64), float(score if score is not None else 0.0)))
+            out.append(
+                (
+                    int(track.track_id),
+                    np.asarray(box, dtype=np.float64),
+                    float(score if score is not None else 0.0),
+                )
+            )
         return out
 
 
@@ -470,7 +486,9 @@ def box_iou(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.divide(inter, union, out=np.zeros_like(inter), where=union > 0)
 
 
-def match_frame(pred_boxes: np.ndarray, gt_boxes: np.ndarray, iou_threshold: float = 0.5) -> list[tuple[int, int]]:
+def match_frame(
+    pred_boxes: np.ndarray, gt_boxes: np.ndarray, iou_threshold: float = 0.5
+) -> list[tuple[int, int]]:
     """One-to-one matching of predicted to ground-truth boxes by IoU.
 
     Uses the Hungarian algorithm on 1 - IoU and keeps pairs with
@@ -508,9 +526,15 @@ def match_frame_ground(
 
 def gt_boxes(annotations: pd.DataFrame) -> pd.DataFrame:
     """Visible ground-truth boxes from load_annotations, one row per person and frame."""
-    _check_columns(annotations, ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax", "visible"], "annotations")
+    _check_columns(
+        annotations,
+        ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax", "visible"],
+        "annotations",
+    )
     visible = annotations.loc[annotations["visible"]]
-    return visible.loc[:, ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax"]].reset_index(drop=True)
+    return visible.loc[:, ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax"]].reset_index(
+        drop=True
+    )
 
 
 def gt_positions(annotations: pd.DataFrame) -> pd.DataFrame:
@@ -523,7 +547,9 @@ def gt_positions(annotations: pd.DataFrame) -> pd.DataFrame:
     return visible.loc[:, ["frame_idx", "person_id", "X_m", "Y_m"]].reset_index(drop=True)
 
 
-def match_tracks_to_gt(tracks: pd.DataFrame, gt: pd.DataFrame, iou_threshold: float = 0.5) -> pd.DataFrame:
+def match_tracks_to_gt(
+    tracks: pd.DataFrame, gt: pd.DataFrame, iou_threshold: float = 0.5
+) -> pd.DataFrame:
     """Match every frame and return one row per matched (track, person) pair.
 
     Columns: frame_idx, track_id, person_id, iou.
@@ -609,8 +635,12 @@ def track_to_person_map(matches: pd.DataFrame, tracks: pd.DataFrame) -> pd.DataF
     if matches.empty:
         best = pd.DataFrame(columns=["track_id", "person_id", "matched_frames"])
     else:
-        counts = matches.groupby(["track_id", "person_id"]).size().rename("matched_frames").reset_index()
-        counts = counts.sort_values(["track_id", "matched_frames", "person_id"], ascending=[True, False, True])
+        counts = (
+            matches.groupby(["track_id", "person_id"]).size().rename("matched_frames").reset_index()
+        )
+        counts = counts.sort_values(
+            ["track_id", "matched_frames", "person_id"], ascending=[True, False, True]
+        )
         best = counts.drop_duplicates("track_id", keep="first")
     table = lengths.reset_index().merge(best, on="track_id", how="left")
     missing = table["person_id"].isna()
@@ -632,7 +662,9 @@ def relabel_tracks(tracks: pd.DataFrame, idmap: pd.DataFrame) -> tuple[pd.DataFr
     _check_columns(tracks, ["frame_idx", "track_id", "score"], "tracks")
     _check_columns(idmap, ["track_id", "person_id"], "id map")
     out = tracks.copy()
-    person = out["track_id"].map(idmap.drop_duplicates("track_id").set_index("track_id")["person_id"])
+    person = out["track_id"].map(
+        idmap.drop_duplicates("track_id").set_index("track_id")["person_id"]
+    )
     fallback = -out["track_id"].astype(int)
     out["person_id"] = person.fillna(pd.Series(fallback, index=out.index)).astype(int)
     ranked = out.sort_values(
@@ -663,7 +695,9 @@ def _summary_from_matches(
     fp = len(tracks) - tp
     fn = len(gt) - tp
     id_switches = count_id_switches(matches)
-    mapping = track_to_person_map(matches, tracks) if len(tracks) else pd.DataFrame(columns=["purity"])
+    mapping = (
+        track_to_person_map(matches, tracks) if len(tracks) else pd.DataFrame(columns=["purity"])
+    )
     quality = float(matches[quality_column].mean()) if tp else float("nan")
     return {
         "pred_boxes": int(len(tracks)),
@@ -680,7 +714,9 @@ def _summary_from_matches(
     }
 
 
-def tracking_summary(tracks: pd.DataFrame, gt: pd.DataFrame, iou_threshold: float = 0.5) -> dict[str, Any]:
+def tracking_summary(
+    tracks: pd.DataFrame, gt: pd.DataFrame, iou_threshold: float = 0.5
+) -> dict[str, Any]:
     """Box-level detection and tracking scores for one tracks table.
 
     Pairs are boxes with IoU >= iou_threshold. mean_iou is the mean IoU of
@@ -733,7 +769,9 @@ def _ground_summary_with_margin(
     ignored_pred = int((~matched_pred & ~pred_inner).sum())
     ignored_gt = int((~matched_gt & ~gt_inner).sum())
     id_switches = count_id_switches(counted)
-    mapping = track_to_person_map(matches, tracks) if len(tracks) else pd.DataFrame(columns=["purity"])
+    mapping = (
+        track_to_person_map(matches, tracks) if len(tracks) else pd.DataFrame(columns=["purity"])
+    )
     quality = float(counted["distance_m"].mean()) if tp else float("nan")
     care_gt = int(gt_inner.sum())
     return {
@@ -868,7 +906,9 @@ def classify_distant_feet(
     if not np.any(distant):
         return labels
     max_iou = max_frame_iou(tracks, gt_boxes)
-    width = np.maximum(tracks["xmax"].to_numpy(dtype=np.float64) - tracks["xmin"].to_numpy(dtype=np.float64), 1e-9)
+    width = np.maximum(
+        tracks["xmax"].to_numpy(dtype=np.float64) - tracks["xmin"].to_numpy(dtype=np.float64), 1e-9
+    )
     height = tracks["ymax"].to_numpy(dtype=np.float64) - tracks["ymin"].to_numpy(dtype=np.float64)
     cut_off = (
         (tracks["ymax"].to_numpy(dtype=np.float64) >= CUT_OFF_BOTTOM_Y)
@@ -990,13 +1030,19 @@ def recall_by_camera_distance(
     """
     _check_columns(gt, ["frame_idx", "person_id", "X_m", "Y_m"], "ground truth")
     camera = np.asarray(camera_xy, dtype=np.float64).reshape(2)
-    distance = np.hypot(gt["X_m"].to_numpy(dtype=np.float64) - camera[0], gt["Y_m"].to_numpy(dtype=np.float64) - camera[1])
+    distance = np.hypot(
+        gt["X_m"].to_numpy(dtype=np.float64) - camera[0],
+        gt["Y_m"].to_numpy(dtype=np.float64) - camera[1],
+    )
     if matches.empty:
         hit = np.zeros(len(gt), dtype=bool)
     else:
         matched = set(zip(matches["frame_idx"].astype(int), matches["person_id"].astype(int)))
         hit = np.array(
-            [(int(frame), int(person)) in matched for frame, person in zip(gt["frame_idx"], gt["person_id"])],
+            [
+                (int(frame), int(person)) in matched
+                for frame, person in zip(gt["frame_idx"], gt["person_id"])
+            ],
             dtype=bool,
         )
     bin_id = np.digitize(distance, np.asarray(edges_m, dtype=np.float64))

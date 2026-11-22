@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Build ground-truth zone, dwell, and proximity events for one camera."""
+"""Build ground-truth zone, dwell, and proximity events for one camera.
+
+Inputs:  configs/events.yaml (C1) or configs/events_<cam>.yaml; visible annotations.
+Outputs: outputs/gt_events_<cam>.csv, gt_events_<cam>_nohyst.csv,
+         gt_events_timeline_<cam>.png (and zone/dwell-only timeline if needed).
+
+Example:
+    python scripts/make_gt_events.py --cam C1
+    python scripts/make_gt_events.py --cam C6
+"""
 
 from __future__ import annotations
 
@@ -15,7 +24,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.events import (
     detect_dwell_events,
     detect_proximity_events,
@@ -52,7 +67,9 @@ def collect_events(tracks: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     combined = pd.concat([zone_events, dwell_events, proximity_events], ignore_index=True)
     if combined.empty:
         return combined
-    return combined.sort_values(["start_time", "event_type"], kind="mergesort").reset_index(drop=True)
+    return combined.sort_values(["start_time", "event_type"], kind="mergesort").reset_index(
+        drop=True
+    )
 
 
 def _people_involved(events: pd.DataFrame) -> int:
@@ -92,7 +109,9 @@ def print_event_summary(events: pd.DataFrame, cfg: dict) -> None:
                     zone_count = 0
                 else:
                     zone_count = int(
-                        ((events["event_type"] == event_type) & (events["zone_id"] == zone_id)).sum()
+                        (
+                            (events["event_type"] == event_type) & (events["zone_id"] == zone_id)
+                        ).sum()
                     )
                 print(f"    {zone_id}: {zone_count}")
         if count == 0:
@@ -108,9 +127,13 @@ def print_comparison(with_hysteresis: pd.DataFrame, without_hysteresis: pd.DataF
     """Print event counts with and without hysteresis, and their ratio."""
     print("\nevent type        with hysteresis  without hysteresis  ratio (without/with)")
     for event_type in EVENT_TYPE_ORDER:
-        with_count = 0 if with_hysteresis.empty else int((with_hysteresis["event_type"] == event_type).sum())
+        with_count = (
+            0 if with_hysteresis.empty else int((with_hysteresis["event_type"] == event_type).sum())
+        )
         without_count = (
-            0 if without_hysteresis.empty else int((without_hysteresis["event_type"] == event_type).sum())
+            0
+            if without_hysteresis.empty
+            else int((without_hysteresis["event_type"] == event_type).sum())
         )
         if with_count == 0:
             ratio = "inf" if without_count else "—"
@@ -131,7 +154,9 @@ def save_timeline(events: pd.DataFrame, path: Path, title: str) -> None:
         return
 
     plotted = events.copy()
-    plotted["_order"] = plotted["event_type"].map({name: index for index, name in enumerate(EVENT_TYPE_ORDER)})
+    plotted["_order"] = plotted["event_type"].map(
+        {name: index for index, name in enumerate(EVENT_TYPE_ORDER)}
+    )
     plotted = plotted.sort_values(["_order", "start_time"], kind="mergesort").reset_index(drop=True)
     height = min(18.0, max(4.0, 0.16 * len(plotted)))
     fig, ax = plt.subplots(figsize=(12, height))

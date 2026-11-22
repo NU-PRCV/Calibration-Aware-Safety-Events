@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import cv2
 import numpy as np
@@ -60,7 +61,9 @@ def _ground_edges(origin: float, cell_count: int, step_m: float) -> np.ndarray:
 def _camera_depth(R: np.ndarray, t: np.ndarray, xy: np.ndarray) -> np.ndarray:
     """Camera-frame Z for ground points. Positive is in front of the camera."""
     world = np.column_stack([xy, np.zeros(len(xy))])
-    return (world @ np.asarray(R, dtype=np.float64).T + np.asarray(t, dtype=np.float64).ravel())[:, 2]
+    return (world @ np.asarray(R, dtype=np.float64).T + np.asarray(t, dtype=np.float64).ravel())[
+        :, 2
+    ]
 
 
 def _corners(xmin: float, xmax: float, ymin: float, ymax: float) -> np.ndarray:
@@ -132,9 +135,7 @@ def _count_rectangle(
     j1 = min(max(j1, 0), GRID_HEIGHT - 1)
     if i1 < i0 or j1 < j0:
         return 0
-    return int(
-        prefix[i1 + 1, j1 + 1] - prefix[i0, j1 + 1] - prefix[i1 + 1, j0] + prefix[i0, j0]
-    )
+    return int(prefix[i1 + 1, j1 + 1] - prefix[i0, j1 + 1] - prefix[i1 + 1, j0] + prefix[i0, j0])
 
 
 def _first_frame(cam_id: str) -> tuple[Path, np.ndarray]:
@@ -199,9 +200,7 @@ def _wide_world_corners(
         for i1 in range(i0 + 1, len(xs)):
             for j0 in range(len(ys) - 1):
                 for j1 in range(j0 + 1, len(ys)):
-                    if not (
-                        valid[i0, j0] and valid[i1, j0] and valid[i1, j1] and valid[i0, j1]
-                    ):
+                    if not (valid[i0, j0] and valid[i1, j0] and valid[i1, j1] and valid[i0, j1]):
                         continue
                     bounds = (float(xs[i0]), float(xs[i1]), float(ys[j0]), float(ys[j1]))
                     count = _count_rectangle(prefix, *bounds)
@@ -209,7 +208,9 @@ def _wide_world_corners(
                     if best is None or count > best[0] or (count == best[0] and area > best[1]):
                         best = (count, area, *bounds)
     if best is None:
-        raise RuntimeError(f"No ground rectangle for {cam_id} has all four corners inside the image.")
+        raise RuntimeError(
+            f"No ground rectangle for {cam_id} has all four corners inside the image."
+        )
 
     chosen = best[2:]
     inset = WIDE_INSET_M
@@ -472,8 +473,12 @@ def _convex_hull(points: np.ndarray) -> np.ndarray:
     if len(ordered) < 3:
         raise ValueError("A convex hull needs at least 3 distinct points.")
 
-    def turn(origin: tuple[float, float], left: tuple[float, float], right: tuple[float, float]) -> float:
-        return (left[0] - origin[0]) * (right[1] - origin[1]) - (left[1] - origin[1]) * (right[0] - origin[0])
+    def turn(
+        origin: tuple[float, float], left: tuple[float, float], right: tuple[float, float]
+    ) -> float:
+        return (left[0] - origin[0]) * (right[1] - origin[1]) - (left[1] - origin[1]) * (
+            right[0] - origin[0]
+        )
 
     lower: list[tuple[float, float]] = []
     for point in ordered:
@@ -502,7 +507,9 @@ def _points_inside_convex(points: np.ndarray, hull: np.ndarray, tol: float = 1e-
     return inside
 
 
-def mark_zones_inside_calibration_hull(zones: list[dict[str, Any]], calib_world: np.ndarray) -> None:
+def mark_zones_inside_calibration_hull(
+    zones: list[dict[str, Any]], calib_world: np.ndarray
+) -> None:
     """Record whether each zone lies inside the calibration-point hull.
 
     Sets inside_calibration_hull on every zone. The zone is inside only when
@@ -631,14 +638,13 @@ def run_trial(
     return result
 
 
-def _print_calibration_points(cam_id: str, layout: str, world: np.ndarray, pixels: np.ndarray) -> None:
+def _print_calibration_points(
+    cam_id: str, layout: str, world: np.ndarray, pixels: np.ndarray
+) -> None:
     """Print the four world points and their exact pixels."""
     print(f"{layout} calibration points for {cam_id}")
     for index, (xy, uv) in enumerate(zip(world, pixels)):
-        print(
-            f"  {index}: world ({xy[0]:.3f}, {xy[1]:.3f}) m"
-            f"    pixel ({uv[0]:.2f}, {uv[1]:.2f})"
-        )
+        print(f"  {index}: world ({xy[0]:.3f}, {xy[1]:.3f}) m    pixel ({uv[0]:.2f}, {uv[1]:.2f})")
 
 
 def save_calibration_overlay(
@@ -653,7 +659,9 @@ def save_calibration_overlay(
     _image_path, image = _first_frame(name)
     canvas = image.copy()
     polygon = np.rint(pixels).astype(np.int32).reshape(-1, 1, 2)
-    cv2.polylines(canvas, [polygon], isClosed=True, color=(0, 220, 255), thickness=2, lineType=cv2.LINE_AA)
+    cv2.polylines(
+        canvas, [polygon], isClosed=True, color=(0, 220, 255), thickness=2, lineType=cv2.LINE_AA
+    )
     for index, (xy, uv) in enumerate(zip(world, pixels)):
         center = (int(round(float(uv[0]))), int(round(float(uv[1]))))
         cv2.circle(canvas, center, 10, (0, 0, 0), thickness=-1, lineType=cv2.LINE_AA)

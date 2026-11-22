@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Overlay each camera's ground-truth homography on its first annotated frame."""
+"""Overlay each camera's ground-truth homography on its first annotated frame.
+
+Inputs:  data/Wildtrack_dataset images and calibrations for C1–C7.
+Outputs: outputs/check_homography_C{1..7}.png
+
+Example:
+    python scripts/check_homography.py
+"""
 
 from __future__ import annotations
 
@@ -15,6 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data import (
     CAMERA_TO_CALIB,
     DATA_ROOT,
+    GROUND_X_MAX_M,
+    GROUND_X_MIN_M,
+    GROUND_Y_MAX_M,
+    GROUND_Y_MIN_M,
     position_id_to_world,
     project_root,
     resolve_dataset_root,
@@ -22,9 +33,8 @@ from src.data import (
 )
 from src.geometry import ground_homography, load_camera_calibration, world_to_image
 
-# Ground rectangle from README.txt: origin (-3, -9) m, 12 m by 36 m.
-X_MIN_M, X_MAX_M = -3.0, 9.0
-Y_MIN_M, Y_MAX_M = -9.0, 27.0
+X_MIN_M, X_MAX_M = GROUND_X_MIN_M, GROUND_X_MAX_M
+Y_MIN_M, Y_MAX_M = GROUND_Y_MIN_M, GROUND_Y_MAX_M
 GRID_STEP_M = 1.0
 SAMPLE_STEP_M = 0.1
 MIN_DEPTH_M = 0.05
@@ -68,7 +78,9 @@ def visible_ground_points(people: list[dict], view_num: int) -> tuple[np.ndarray
     world: list[list[float]] = []
     feet: list[list[float]] = []
     for person in people:
-        view = next((item for item in person.get("views", []) if item.get("viewNum") == view_num), None)
+        view = next(
+            (item for item in person.get("views", []) if item.get("viewNum") == view_num), None
+        )
         if view is None:
             continue
         xmin, ymin = int(view["xmin"]), int(view["ymin"])
@@ -162,7 +174,9 @@ def draw_label(image: np.ndarray, lines: list[str]) -> None:
     for line in lines:
         origin = (16, y)
         cv2.putText(image, line, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
-        cv2.putText(image, line, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(
+            image, line, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA
+        )
         y += 30
 
 

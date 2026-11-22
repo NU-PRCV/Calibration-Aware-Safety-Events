@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-
 from src.data import DATA_ROOT
 from src.geometry import (
     apply_homography,
@@ -80,7 +79,6 @@ def test_perturb_pixels_is_determined_by_the_rng_seed() -> None:
     assert np.array_equal(first, second)
     other = perturb_pixels(pixels, 3.0, np.random.default_rng(8))
     assert not np.array_equal(first, other)
-
 
 
 def test_npoint_layouts_sit_inside_wide_rectangle() -> None:

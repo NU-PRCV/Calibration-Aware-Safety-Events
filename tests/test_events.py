@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from src.data import project_root
 from src.events import (
     detect_dwell_events,
@@ -197,12 +196,8 @@ def test_boundary_jitter_does_not_chatter() -> None:
 
 def _pair_track(times: np.ndarray, xy_a: np.ndarray, xy_b: np.ndarray) -> pd.DataFrame:
     """Build tracks for person 2 and person 1, with the higher id listed first."""
-    first = pd.DataFrame(
-        {"time_sec": times, "person_id": 2, "X_m": xy_b[:, 0], "Y_m": xy_b[:, 1]}
-    )
-    second = pd.DataFrame(
-        {"time_sec": times, "person_id": 1, "X_m": xy_a[:, 0], "Y_m": xy_a[:, 1]}
-    )
+    first = pd.DataFrame({"time_sec": times, "person_id": 2, "X_m": xy_b[:, 0], "Y_m": xy_b[:, 1]})
+    second = pd.DataFrame({"time_sec": times, "person_id": 1, "X_m": xy_a[:, 0], "Y_m": xy_a[:, 1]})
     return pd.concat([first, second], ignore_index=True)
 
 
@@ -224,7 +219,9 @@ def test_threshold_jitter_does_not_flicker() -> None:
     """Separation that jitters around the threshold opens at most one event."""
     rng = np.random.default_rng(0)
     times = np.arange(40) * FRAME_DT
-    separation = float(_EVENT_CONFIG["proximity_threshold_m"]) + rng.uniform(-0.05, 0.05, len(times))
+    separation = float(_EVENT_CONFIG["proximity_threshold_m"]) + rng.uniform(
+        -0.05, 0.05, len(times)
+    )
     origin = np.zeros((len(times), 2))
     other = np.column_stack([separation, np.zeros(len(times))])
     events = detect_proximity_events(_pair_track(times, origin, other), _EVENT_CONFIG)

@@ -36,6 +36,23 @@ ORIGIN_Y_M = -9.0
 # Annotated frames are sampled at 2 fps, so neighbors are 0.5 s apart.
 ANNOTATED_FPS = 2.0
 
+# Annotated ground rectangle in meters (origin + 12 m x 36 m plane).
+# A foot on the boundary still counts as inside.
+GROUND_X_MIN_M = ORIGIN_X_M
+GROUND_X_MAX_M = ORIGIN_X_M + GRID_WIDTH * CELL_SIZE_M
+GROUND_Y_MIN_M = ORIGIN_Y_M
+GROUND_Y_MAX_M = ORIGIN_Y_M + GRID_HEIGHT * CELL_SIZE_M
+
+# Max ground distance (m) for matching a predicted foot to a ground-truth foot.
+GROUND_MATCH_DISTANCE_M = 0.5
+
+# Shrink the annotated rectangle by this many meters on every side before
+# counting TP / FP / FN. Matching still uses the full rectangle.
+DEFAULT_BOUNDARY_MARGIN_M = 1.0
+
+# Anonymous proximity scoring: pair midpoints must lie within this distance.
+ANONYMOUS_PROXIMITY_MIDPOINT_M = 1.0
+
 ANNOTATION_COLUMNS = [
     "frame_number",
     "frame_idx",
@@ -80,9 +97,7 @@ def position_id_to_world(pos_id: int) -> tuple[float, float]:
     grid_x = position % GRID_WIDTH
     grid_y = position // GRID_WIDTH
     if grid_y >= GRID_HEIGHT:
-        raise ValueError(
-            f"positionID {pos_id} has grid_y {grid_y}, outside 0..{GRID_HEIGHT - 1}"
-        )
+        raise ValueError(f"positionID {pos_id} has grid_y {grid_y}, outside 0..{GRID_HEIGHT - 1}")
     # Round off binary noise from 0.025, which is not an exact float.
     # Six decimals is 0.001 mm, far below the 2.5 cm cell size.
     x_m = round(ORIGIN_X_M + CELL_SIZE_M * grid_x, 6)

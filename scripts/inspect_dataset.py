@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Print the WILDTRACK layout, one annotation, and camera-1 calibration files."""
+"""Print the WILDTRACK layout, one annotation, and camera-1 calibration files.
+
+Inputs:  data/Wildtrack_dataset (or --dataset PATH).
+Outputs: printed directory listing and sample JSON / calibration XML (stdout).
+
+Example:
+    python scripts/inspect_dataset.py
+"""
 
 from __future__ import annotations
 
@@ -50,7 +57,9 @@ def resolve_dataset(explicit: Path | None) -> Path:
 
 def file_count(directory: Path) -> int:
     """Count non-hidden files directly inside directory."""
-    return sum(1 for path in directory.iterdir() if path.is_file() and not path.name.startswith("."))
+    return sum(
+        1 for path in directory.iterdir() if path.is_file() and not path.name.startswith(".")
+    )
 
 
 def print_structure(dataset: Path) -> None:
@@ -141,7 +150,9 @@ def print_calibrations(dataset: Path) -> tuple[Path | None, Path | None]:
             print(f"  {path.relative_to(dataset)}")
         return None, None
 
-    files = sorted(path for path in calib_root.rglob("*") if path.is_file() and not path.name.startswith("."))
+    files = sorted(
+        path for path in calib_root.rglob("*") if path.is_file() and not path.name.startswith(".")
+    )
     print(f"Directory: {calib_root}")
     print(f"File count: {len(files)}")
     for path in files:
@@ -165,7 +176,9 @@ def print_calibrations(dataset: Path) -> tuple[Path | None, Path | None]:
         "No file in this dataset maps an image folder such as C1 onto a "
         "calibration filename. Filenames use CVLab1-4 and IDIAP1-3."
     )
-    print("Printing CVLab1 as camera 1 (extrinsic + intrinsic_zero, the set README says matches these images).")
+    print(
+        "Printing CVLab1 as camera 1 (extrinsic + intrinsic_zero, the set README says matches these images)."
+    )
 
     extrinsic = _match_file(files, parent_token="extrinsic", stem_token="CVLab1")
     intrinsic = _match_file(files, parent_token="intrinsic_zero", stem_token="CVLab1")
@@ -198,7 +211,10 @@ def _tagged_numbers(text: str, tag: str) -> list[float]:
     match = re.search(rf"<{tag}\b[^>]*>(.*?)</{tag}>", text, flags=re.I | re.S)
     if match is None:
         return []
-    return [float(value) for value in re.findall(r"[-+]?(?:\d+\.\d+|\d+)(?:[eE][-+]?\d+)?", match.group(1))]
+    return [
+        float(value)
+        for value in re.findall(r"[-+]?(?:\d+\.\d+|\d+)(?:[eE][-+]?\d+)?", match.group(1))
+    ]
 
 
 def print_translation_units(dataset: Path, extrinsic: Path | None) -> None:
@@ -220,7 +236,9 @@ def print_translation_units(dataset: Path, extrinsic: Path | None) -> None:
             used_tag = tag
             break
     if not components:
-        print("No translation-like block with numbers was found (looked for tvec, T, translation, Trans, t).")
+        print(
+            "No translation-like block with numbers was found (looked for tvec, T, translation, Trans, t)."
+        )
         return
 
     magnitudes = [abs(value) for value in components]
@@ -232,7 +250,9 @@ def print_translation_units(dataset: Path, extrinsic: Path | None) -> None:
     print(f"L2 norm: {norm:.6g}")
 
     readme_path = dataset / "README.txt"
-    readme = readme_path.read_text(encoding="utf-8", errors="replace") if readme_path.is_file() else ""
+    readme = (
+        readme_path.read_text(encoding="utf-8", errors="replace") if readme_path.is_file() else ""
+    )
     spacing = re.search(r"([0-9.]+)\s*cm spacing", readme, re.I)
     grid = re.search(r"(\d+)\s*x\s*(\d+)\s*grid", readme, re.I)
     if spacing and grid:
@@ -257,9 +277,13 @@ def print_translation_units(dataset: Path, extrinsic: Path | None) -> None:
                 "so they look like meters."
             )
         else:
-            print("The translation magnitudes are between those two scales; units are ambiguous from size alone.")
+            print(
+                "The translation magnitudes are between those two scales; units are ambiguous from size alone."
+            )
     else:
-        print("README did not state a grid size and centimeter spacing, so no unit comparison was made.")
+        print(
+            "README did not state a grid size and centimeter spacing, so no unit comparison was made."
+        )
 
 
 def image_size(path: Path) -> tuple[int, int, str]:

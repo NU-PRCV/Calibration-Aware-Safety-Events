@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Streamlit demo: calibration noise, camera bump, and event scoring on WILDTRACK.
 
-Run from the repository root:
-  streamlit run app/demo.py
+Interactive sidebar for camera, tracks, click noise, outliers, and bump.
+Three panels show the camera frame, bird's-eye ground plane, and event timeline.
+
+Inputs:  data/Wildtrack_dataset, configs/events*.yaml, outputs/gt_events_*.csv,
+         results/tracks/ (optional predicted tracks for C1)
+Outputs: interactive UI only (no files written)
+
+Example:
+    streamlit run app/demo.py
 """
 
 from __future__ import annotations
@@ -23,7 +30,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.evaluation import score_events
 from src.events import (
     detect_dwell_events,
@@ -247,7 +260,9 @@ def compute_scenario(
     H_system = estimate_H_system(clicked, world_pts, estimator)
     H_project = bump_homography(K, R, t, bump_axis, bump_angle, seed)
 
-    visible = annotations.loc[annotations["visible"], ["time_sec", "person_id", "X_m", "Y_m", "frame_idx"]].copy()
+    visible = annotations.loc[
+        annotations["visible"], ["time_sec", "person_id", "X_m", "Y_m", "frame_idx"]
+    ].copy()
     true_xy = visible[["X_m", "Y_m"]].to_numpy(dtype=np.float64)
 
     if track_source == "ground_truth":
@@ -320,7 +335,9 @@ def compute_scenario(
     )
     pred_events = detect_all(est_tracks, cfg)
     scores, _matches = score_events(gt_events, pred_events, cfg)
-    score_all = scores.loc[scores["zone_id"] == "all", ["event_type", "precision", "recall", "f1"]].copy()
+    score_all = scores.loc[
+        scores["zone_id"] == "all", ["event_type", "precision", "recall", "f1"]
+    ].copy()
 
     return {
         "positions": positions,
@@ -457,7 +474,9 @@ def draw_birdseye(scenario: dict[str, Any], frame_idx: int, cam_id: str) -> plt.
                 pb = pb.iloc[0]
             mx = 0.5 * (float(pa["X_est"]) + float(pb["X_est"]))
             my = 0.5 * (float(pa["Y_est"]) + float(pb["Y_est"]))
-            circle = plt.Circle((mx, my), PROX_CIRCLE_R_M, fill=False, color="red", linewidth=1.8, zorder=4)
+            circle = plt.Circle(
+                (mx, my), PROX_CIRCLE_R_M, fill=False, color="red", linewidth=1.8, zorder=4
+            )
             ax.add_patch(circle)
 
     cam_xy = camera_ground_xy(cam_id)
@@ -478,7 +497,7 @@ def draw_timeline(scenario: dict[str, Any], frame_idx: int) -> plt.Figure:
     t_now = frame_idx / 2.0
     fig, axes = plt.subplots(3, 1, figsize=(11, 4.8), sharex=True)
     for ax, event_type in zip(axes, ("zone", "dwell", "proximity")):
-        for source, table, y0, alpha in (
+        for _source, table, y0, alpha in (
             ("GT", gt, 0.55, 0.85),
             ("pred", pred, 0.15, 0.55),
         ):
@@ -574,7 +593,9 @@ def sidebar() -> dict[str, Any]:
 def main() -> None:
     st.set_page_config(page_title="Calibration-Aware Safety Events", layout="wide")
     st.title("Calibration-Aware Safety Events")
-    st.caption("Zones use true H*. Feet and events use the estimated homography (and optional camera bump).")
+    st.caption(
+        "Zones use true H*. Feet and events use the estimated homography (and optional camera bump)."
+    )
 
     opts = sidebar()
     scenario = compute_scenario(
