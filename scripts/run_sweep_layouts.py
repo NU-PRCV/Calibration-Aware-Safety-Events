@@ -2,7 +2,14 @@
 """Sweep calibration noise across WHERE the points are placed (C1, GT tracks).
 
 Compares wide / narrow / near_only / far_only rectangles, each as 4 corners and
-as a 3 x 4 grid. Existing sweep CSV files are not modified.
+as a 3 x 4 grid.
+
+Inputs:  configs/events.yaml, annotations, outputs/gt_events_C1.csv
+Outputs: outputs/sweep_C1_layouts.csv, layout overlays / F1 plots,
+         layout_hull_metadata_C1.json
+
+Example:
+    python scripts/run_sweep_layouts.py
 """
 
 from __future__ import annotations
@@ -91,10 +98,7 @@ def _family_of(layout: str) -> str:
 
 def _jobs() -> list[tuple[str, float, int]]:
     return [
-        (layout, float(eps), seed)
-        for layout in LAYOUT_NAMES
-        for eps in EPS_PX
-        for seed in SEEDS
+        (layout, float(eps), seed) for layout in LAYOUT_NAMES for eps in EPS_PX for seed in SEEDS
     ]
 
 
@@ -115,7 +119,11 @@ def _run_sweep(
     trial_seconds: float,
     timed_result: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    timed_key = (str(timed_result["layout"]), float(timed_result["eps_px"]), int(timed_result["seed"]))
+    timed_key = (
+        str(timed_result["layout"]),
+        float(timed_result["eps_px"]),
+        int(timed_result["seed"]),
+    )
     pending = [job for job in _jobs() if job != timed_key]
     results = [timed_result]
     initargs = (cam_id, tracks, events, cfg)
@@ -233,15 +241,23 @@ def _print_summary(frame: pd.DataFrame, hull_flags: dict[str, dict[str, bool]]) 
             f"  {'eps':>5}  "
             f"{'F1z':>7} {'F1d':>7} {'F1p':>7}  "
             f"{'pos':>7}  "
-            + " ".join(f"{'F1z_'+z:>8}" for z in ZONE_IDS)
+            + " ".join(f"{'F1z_' + z:>8}" for z in ZONE_IDS)
             + "  "
-            + " ".join(f"{'pos_'+z:>7}" for z in ZONE_IDS)
+            + " ".join(f"{'pos_' + z:>7}" for z in ZONE_IDS)
         )
         for eps in EPS_PX:
-            f1 = {et: float(np.mean(_group(frame, layout, float(eps), f"f1_{et}"))) for et in EVENT_TYPES}
+            f1 = {
+                et: float(np.mean(_group(frame, layout, float(eps), f"f1_{et}")))
+                for et in EVENT_TYPES
+            }
             pos = float(np.mean(_group(frame, layout, float(eps), "pos_mean_m")))
-            f1z = [float(np.mean(_group(frame, layout, float(eps), f"f1_zone_{z}"))) for z in ZONE_IDS]
-            posz = [float(np.mean(_group(frame, layout, float(eps), f"pos_mean_m_{z}"))) for z in ZONE_IDS]
+            f1z = [
+                float(np.mean(_group(frame, layout, float(eps), f"f1_zone_{z}"))) for z in ZONE_IDS
+            ]
+            posz = [
+                float(np.mean(_group(frame, layout, float(eps), f"pos_mean_m_{z}")))
+                for z in ZONE_IDS
+            ]
             print(
                 f"  {eps:5g}  "
                 f"{f1['zone']:7.3f} {f1['dwell']:7.3f} {f1['proximity']:7.3f}  "
@@ -261,7 +277,10 @@ def _plot_f1(frame: pd.DataFrame, path: Path) -> None:
         for family in FAMILIES:
             for n_points, linestyle, marker in ((4, "-", "o"), (12, "--", "s")):
                 layout = family if n_points == 4 else f"{family}_n12"
-                ys = [float(np.mean(_group(frame, layout, float(eps), f"f1_{event_type}"))) for eps in EPS_PX]
+                ys = [
+                    float(np.mean(_group(frame, layout, float(eps), f"f1_{event_type}")))
+                    for eps in EPS_PX
+                ]
                 ax.plot(
                     EPS_PX,
                     ys,
@@ -280,7 +299,9 @@ def _plot_f1(frame: pd.DataFrame, path: Path) -> None:
         ax.set_ylim(0.0, 1.05)
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.12))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.12)
+    )
     fig.suptitle("C1 event F1 vs noise by calibration layout", y=1.18)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -396,7 +417,9 @@ def main() -> None:
     _print_summary(frame, hull_flags)
     _sanity_check(frame)
     _plot_f1(frame, output_dir / f"f1_vs_eps_layouts_{cam_id}.png")
-    _plot_position_by_zone(frame, hull_flags, output_dir / f"position_error_by_zone_layouts_{cam_id}.png")
+    _plot_position_by_zone(
+        frame, hull_flags, output_dir / f"position_error_by_zone_layouts_{cam_id}.png"
+    )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,15 @@
 data/
 outputs/
 __pycache__/
+**/__pycache__/
+*.py[cod]
 .venv/
 .DS_Store
+**/.DS_Store
 .pytest_cache/
+.ruff_cache/
 *.pt
+*.pth
+.mypy_cache/
+.coverage
+htmlcov/

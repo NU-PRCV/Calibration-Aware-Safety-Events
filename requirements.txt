@@ -11,3 +11,4 @@ ultralytics>=8.3
 supervision>=0.22,<0.27
 deep-sort-realtime>=1.3
 setuptools<81  # deep-sort-realtime needs pkg_resources
+# Dev tooling (ruff): pip install -e ".[dev]"

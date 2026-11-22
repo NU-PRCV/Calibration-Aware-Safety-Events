@@ -420,6 +420,22 @@ Dwell fires when a zone visit lasts at least `dwell_seconds`; the alarm starts a
 - [x] RANSAC against a badly clicked point
 - [x] A second camera (C6) and a camera-independent guideline in meters
 
+## Third-party code and data
+
+| Component | Role in this project | License (typical upstream) |
+|---|---|---|
+| [OpenCV](https://opencv.org/) (`opencv-python`) | Calibration XML, Rodrigues, image I/O, overlays | Apache-2.0 |
+| [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics) | Person detection (YOLO11n / YOLO11x) | AGPL-3.0 |
+| [supervision](https://github.com/roboflow/supervision) | ByteTrack multi-object tracking | MIT |
+| [deep-sort-realtime](https://github.com/levan92/deep_sort_realtime) | DeepSORT tracking | MIT |
+| [NumPy](https://numpy.org/) / [SciPy](https://scipy.org/) | Geometry, DLT, RANSAC, numerics | BSD-3-Clause |
+| [pandas](https://pandas.pydata.org/) | Tracks, events, and sweep tables | BSD-3-Clause |
+| [Matplotlib](https://matplotlib.org/) | Experiment and report plots | PSF-based |
+| [Streamlit](https://streamlit.io/) | Interactive demo (`app/demo.py`) | Apache-2.0 |
+| [WILDTRACK](https://www.epfl.ch/labs/cvlab/data/data-wildtrack/) (Chavdarova et al., CVPR 2018) | Multi-camera video, annotations, and calibrations | Dataset terms of use (EPFL CVLab); cite the paper |
+
+Weights downloaded by Ultralytics (e.g. `yolo11n.pt`) are not committed; see `.gitignore` (`*.pt`).
+
 ## References
 
 1. R. Hartley and A. Zisserman. *Multiple View Geometry in Computer Vision*, 2nd ed. Cambridge University Press, 2003.

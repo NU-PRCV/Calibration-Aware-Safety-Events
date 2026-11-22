@@ -2,14 +2,14 @@
 """Outlier calibration-click sweep on C1 ground-truth tracks (n12 layout).
 
 Every point gets a 1 px click error. One randomly chosen point also gets an
-outlier of magnitude in {0, 10, 20, 30, 50} px. Three estimators are compared:
+outlier of magnitude in {0, 10, 20, 30, 50} px. Estimators: DLT, exhaustive
+RANSAC, and OpenCV RANSAC.
 
-  dlt         normalized DLT least squares on all 12 points
-  ransac      exhaustive RANSAC over all C(12,4) subsets (3 px transfer threshold)
-  cv2_ransac  OpenCV RANSAC; 3 px converted to meters via the median local
-              scale of H* at the calibration pixels (destination residuals)
+Inputs:  configs/events.yaml, annotations, outputs/gt_events_C1.csv
+Outputs: outputs/sweep_C1_outlier.csv, outputs/f1_vs_outlier_C1.png
 
-Existing sweep CSV files are not modified.
+Example:
+    python scripts/run_sweep_outlier.py
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from src.events import (
     load_event_config,
 )
 from src.geometry import (
+    ground_homography,
     image_to_world,
     invert_homography,
     load_camera_calibration,
@@ -50,7 +51,6 @@ from src.geometry import (
     ransac_homography_exhaustive,
     world_to_image,
 )
-from src.geometry import ground_homography
 from src.perturb import choose_calibration_points, perturb_pixels
 
 LAYOUT = "n12"
@@ -298,7 +298,9 @@ def _sanity_check(
                 print(f"  PASS  {name} {event_type}: F1=1.000")
         if estimates[name]["n_inliers"] != len(exact_pixels) and name != "dlt":
             # With perfect data every point should be an inlier.
-            print(f"  FAIL  {name}: n_inliers={estimates[name]['n_inliers']} expected {len(exact_pixels)}")
+            print(
+                f"  FAIL  {name}: n_inliers={estimates[name]['n_inliers']} expected {len(exact_pixels)}"
+            )
             ok = False
     print("Sanity check:", "PASS" if ok else "FAIL")
     return ok
@@ -311,7 +313,9 @@ def _group(frame: pd.DataFrame, estimator: str, mag: float, column: str) -> np.n
 
 def _print_summary(frame: pd.DataFrame) -> None:
     print(f"\n{N_TRIALS} trials per outlier magnitude, seeds {SEEDS[0]}..{SEEDS[-1]}")
-    print(f"Click noise = {CLICK_EPS_PX:g} px on every point; n12 layout; threshold = {TRANSFER_THRESH_PX:g} px")
+    print(
+        f"Click noise = {CLICK_EPS_PX:g} px on every point; n12 layout; threshold = {TRANSFER_THRESH_PX:g} px"
+    )
     for estimator in ESTIMATORS:
         print(f"\n{estimator}")
         print(
@@ -328,7 +332,9 @@ def _print_summary(frame: pd.DataFrame) -> None:
             if float(mag) <= 0.0:
                 detect = float("nan")
             else:
-                detect = 100.0 * float(np.nanmean(_group(frame, estimator, float(mag), "outlier_flagged")))
+                detect = 100.0 * float(
+                    np.nanmean(_group(frame, estimator, float(mag), "outlier_flagged"))
+                )
             detect_s = f"{detect:7.1f}%" if np.isfinite(detect) else "     n/a"
             print(
                 f"  {mag:5g}  {f1['zone']:7.3f} {f1['dwell']:7.3f} {f1['proximity']:7.3f}  "
@@ -360,7 +366,9 @@ def _plot_f1(frame: pd.DataFrame, path: Path) -> None:
         ax.set_ylim(0.0, 1.05)
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle("C1 event F1 vs one outlier calibration click (n12)", y=1.14)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -398,7 +406,17 @@ def main() -> None:
     pending = [job for job in _jobs() if job != timed_key]
     results = list(timed_rows)
 
-    initargs = (cam_id, tracks, events, cfg, world_pts, exact_pixels, H_star, H_star_i2w, cv2_thresh_m)
+    initargs = (
+        cam_id,
+        tracks,
+        events,
+        cfg,
+        world_pts,
+        exact_pixels,
+        H_star,
+        H_star_i2w,
+        cv2_thresh_m,
+    )
     if trial_seconds > PARALLEL_IF_SLOWER_THAN_S:
         workers = max(1, (os.cpu_count() or 2) - 1)
         print(f"One trial takes {trial_seconds:.2f} s. Running {workers} worker processes.")

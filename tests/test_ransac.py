@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from src.geometry import ransac_homography_exhaustive, transfer_errors_px
 from src.perturb import choose_calibration_points, estimate_H_img_to_world
 

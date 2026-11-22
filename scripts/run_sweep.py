@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Sweep calibration-pixel noise and summarize event scores for camera C1."""
+"""Sweep calibration-pixel noise and summarize event scores on C1 GT tracks.
+
+Inputs:  configs/events.yaml, annotations, outputs/gt_events_C1.csv
+Outputs: outputs/sweep_C1_gt_tracks.csv and F1 / position-error plots.
+
+Example:
+    python scripts/run_sweep.py
+"""
 
 from __future__ import annotations
 
@@ -81,7 +88,9 @@ def _run_sweep(
     if trial_seconds > PARALLEL_IF_SLOWER_THAN_S:
         workers = max(1, (os.cpu_count() or 2) - 1)
         print(f"One trial takes {trial_seconds:.2f} s. Running {workers} worker processes.")
-        with Pool(workers, initializer=_init_worker, initargs=(cam_id, tracks, events, cfg)) as pool:
+        with Pool(
+            workers, initializer=_init_worker, initargs=(cam_id, tracks, events, cfg)
+        ) as pool:
             for result in tqdm(
                 pool.imap_unordered(_worker, pending, chunksize=4),
                 total=len(_jobs()),

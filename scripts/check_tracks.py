@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""Check every track CSV of one camera against the ground truth.
+"""Score every track CSV of one camera against ground-truth feet.
 
-For each tracks_<cam>_<detector>_<tracker>.csv this script
-  1. validates the format,
-  2. projects each box's bottom-center to the ground plane with H*,
-  3. drops predicted feet outside the annotated ground area,
-  4. matches the remaining feet to ground-truth positions (within 0.5 m),
-  5. scores with a boundary don't-care margin (default 1 m) and also margin 0,
-  6. also matches boxes by IoU, kept as a secondary score,
-  7. saves the track-to-person link from the ground-plane matches, and
-  8. draws one frame with predicted and ground-truth boxes.
+Validates format, projects box bottoms with H*, applies a boundary don't-care
+margin, and writes id maps plus one overlay frame.
 
-Scores and id maps stay in results/tracks/. Overlay PNGs go to
-outputs/tracks/ so the large images are not committed. Foot-point
-diagnostics live in scripts/diagnose_foot_points.py.
+Inputs:  results/tracks/tracks_<cam>_*.csv, annotations, calibration
+Outputs: results/tracks/tracking_summary_<cam>.csv, idmap_*.csv;
+         overlays under outputs/tracks/
+
+Example:
+    python scripts/check_tracks.py --cam C1
 """
 
 from __future__ import annotations
@@ -28,7 +24,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.tracking import (
     DEFAULT_BOUNDARY_MARGIN_M,
     DISTANT_FOOT_M,
@@ -56,11 +58,15 @@ NO_PERSON_MODEL = "yolo11x_deepsort"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--cam", default="C1")
     parser.add_argument("--data-root", default=DATA_ROOT)
     parser.add_argument("--tracks-dir", default=str(project_root() / "results" / "tracks"))
-    parser.add_argument("--frame", type=int, default=OVERLAY_FRAME_IDX, help="frame_idx for the overlay image")
+    parser.add_argument(
+        "--frame", type=int, default=OVERLAY_FRAME_IDX, help="frame_idx for the overlay image"
+    )
     parser.add_argument(
         "--boundary-margin",
         type=float,
@@ -77,22 +83,48 @@ def _color(track_id: int) -> tuple[int, int, int]:
     return int(pixel[0]), int(pixel[1]), int(pixel[2])
 
 
-def draw_overlay(image_path: str, tracks: pd.DataFrame, gt: pd.DataFrame, title: str, path: Path) -> None:
+def draw_overlay(
+    image_path: str, tracks: pd.DataFrame, gt: pd.DataFrame, title: str, path: Path
+) -> None:
     """Ground truth in thin white, predictions in color with their track ID."""
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if image is None:
         raise FileNotFoundError(f"Could not read {image_path}")
     for row in gt.itertuples(index=False):
-        cv2.rectangle(image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)), (255, 255, 255), 1)
+        cv2.rectangle(
+            image,
+            (int(row.xmin), int(row.ymin)),
+            (int(row.xmax), int(row.ymax)),
+            (255, 255, 255),
+            1,
+        )
     for row in tracks.itertuples(index=False):
         color = _color(row.track_id)
         top_left = (int(row.xmin), int(row.ymin))
         cv2.rectangle(image, top_left, (int(row.xmax), int(row.ymax)), color, 2)
         label = f"{int(row.track_id)} {row.score:.2f}"
-        cv2.putText(image, label, (top_left[0], max(14, top_left[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3)
-        cv2.putText(image, label, (top_left[0], max(14, top_left[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        cv2.putText(
+            image,
+            label,
+            (top_left[0], max(14, top_left[1] - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 0, 0),
+            3,
+        )
+        cv2.putText(
+            image,
+            label,
+            (top_left[0], max(14, top_left[1] - 6)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            1,
+        )
     for thickness, color in ((3, (0, 0, 0)), (1, (255, 255, 255))):
-        cv2.putText(image, title, (24, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, thickness, cv2.LINE_AA)
+        cv2.putText(
+            image, title, (24, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, thickness, cv2.LINE_AA
+        )
     if not cv2.imwrite(str(path), image):
         raise OSError(f"Could not write {path}")
 
@@ -115,10 +147,14 @@ def _print_no_person_edge(
     in_band = in_ground_area(no_person["X_m"], no_person["Y_m"], 0.0) & ~in_ground_area(
         no_person["X_m"], no_person["Y_m"], margin_m
     )
-    print(f"\n{name} no_person feet (n={len(no_person)}): X_m min/p5/p50/p95 = "
-          f"{x.min():.3f} / {np.percentile(x, 5):.3f} / {np.percentile(x, 50):.3f} / {np.percentile(x, 95):.3f}")
-    print(f"{name} no_person feet inside the {margin_m:g} m boundary band: {int(in_band.sum())} "
-          f"({100.0 * in_band.mean():.1f}%)")
+    print(
+        f"\n{name} no_person feet (n={len(no_person)}): X_m min/p5/p50/p95 = "
+        f"{x.min():.3f} / {np.percentile(x, 5):.3f} / {np.percentile(x, 50):.3f} / {np.percentile(x, 95):.3f}"
+    )
+    print(
+        f"{name} no_person feet inside the {margin_m:g} m boundary band: {int(in_band.sum())} "
+        f"({100.0 * in_band.mean():.1f}%)"
+    )
 
 
 def main() -> None:
@@ -127,7 +163,9 @@ def main() -> None:
     tracks_dir = Path(args.tracks_dir)
     files = list(iter_track_files(tracks_dir, cam_id))
     if not files:
-        raise FileNotFoundError(f"No tracks_{cam_id}_*.csv in {tracks_dir}. Run scripts/run_tracking.py first.")
+        raise FileNotFoundError(
+            f"No tracks_{cam_id}_*.csv in {tracks_dir}. Run scripts/run_tracking.py first."
+        )
     margin = float(args.boundary_margin)
 
     annotations = load_annotations(resolve_dataset_root(args.data_root), cam_id)
@@ -152,8 +190,12 @@ def main() -> None:
         world = foot_points_world(tracks, cam_id)
         on_ground, dropped_outside = drop_outside_ground_area(world)
         print(f"{name}: dropped {dropped_outside} predicted rows outside the ground area")
-        ground_0 = tracking_summary_ground(on_ground, covered_feet, GROUND_MATCH_DISTANCE_M, boundary_margin_m=0.0)
-        ground = tracking_summary_ground(on_ground, covered_feet, GROUND_MATCH_DISTANCE_M, boundary_margin_m=margin)
+        ground_0 = tracking_summary_ground(
+            on_ground, covered_feet, GROUND_MATCH_DISTANCE_M, boundary_margin_m=0.0
+        )
+        ground = tracking_summary_ground(
+            on_ground, covered_feet, GROUND_MATCH_DISTANCE_M, boundary_margin_m=margin
+        )
         matches = match_tracks_ground(on_ground, covered_feet, GROUND_MATCH_DISTANCE_M)
         idmap = track_to_person_map(matches, on_ground)
         idmap.to_csv(tracks_dir / f"idmap_{cam_id}_{name}.csv", index=False, float_format="%.3f")

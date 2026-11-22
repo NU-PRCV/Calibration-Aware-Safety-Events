@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from src.data import ANONYMOUS_PROXIMITY_MIDPOINT_M
 
 EVENT_TYPES = ("zone", "dwell", "proximity")
 SCORE_COLUMNS = ["event_type", "zone_id", "tp", "fp", "fn", "precision", "recall", "f1"]
@@ -187,7 +190,6 @@ def match_events(
         matched_gt.add(gt_pos)
         matched_pred.add(pred_pos)
         gt_row = gt.iloc[gt_pos]
-        pred_row = pred.iloc[pred_pos]
         pairs.append(
             {
                 "event_type": event_type,
@@ -399,9 +401,10 @@ def match_events_anonymous(
     candidates: list[tuple[float, int, int]] = []
     for gt_pos in range(len(gt)):
         for pred_pos in range(len(pred)):
-            if event_type in ("zone", "dwell"):
-                if _key_value(gt.iloc[gt_pos]["zone_id"]) != _key_value(pred.iloc[pred_pos]["zone_id"]):
-                    continue
+            if event_type in ("zone", "dwell") and _key_value(
+                gt.iloc[gt_pos]["zone_id"]
+            ) != _key_value(pred.iloc[pred_pos]["zone_id"]):
+                continue
             iou = temporal_iou(
                 gt_starts[gt_pos],
                 gt_ends[gt_pos],
@@ -420,7 +423,9 @@ def match_events_anonymous(
             )
             if overlap is None:
                 continue
-            if compatible is not None and not compatible(gt.iloc[gt_pos], pred.iloc[pred_pos], overlap[0], overlap[1]):
+            if compatible is not None and not compatible(
+                gt.iloc[gt_pos], pred.iloc[pred_pos], overlap[0], overlap[1]
+            ):
                 continue
             candidates.append((iou, gt_pos, pred_pos))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
@@ -464,7 +469,7 @@ def score_events_anonymous(
     gt_tracks: pd.DataFrame | None = None,
     pred_tracks: pd.DataFrame | None = None,
     min_iou: float = 0.0,
-    max_midpoint_dist_m: float = 1.0,
+    max_midpoint_dist_m: float = ANONYMOUS_PROXIMITY_MIDPOINT_M,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Identity-free event scores.
 
@@ -478,7 +483,9 @@ def score_events_anonymous(
         if gt_tracks is None or pred_tracks is None:
             raise ValueError("Anonymous proximity scoring needs gt_tracks and pred_tracks")
         gt_mid = mean_pair_midpoint(gt_tracks, gt_row["person_a"], gt_row["person_b"], lo, hi)
-        pred_mid = mean_pair_midpoint(pred_tracks, pred_row["person_a"], pred_row["person_b"], lo, hi)
+        pred_mid = mean_pair_midpoint(
+            pred_tracks, pred_row["person_a"], pred_row["person_b"], lo, hi
+        )
         if gt_mid is None or pred_mid is None:
             return False
         return float(np.linalg.norm(gt_mid - pred_mid)) <= max_midpoint_dist_m

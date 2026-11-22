@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Run zone / dwell / proximity detection on C1 tracks under perfect calibration.
+"""Run zone / dwell / proximity detection on tracks under perfect calibration.
 
-Uses H* for foot projection. Zone and dwell are scored against
-outputs/gt_events_C1.csv. Proximity uses only feet inside the 1 m-inset
-inner area on both the predicted side and a separately saved ground-truth
-file outputs/gt_events_C1_proximity_inner.csv, so edge people do not create
-fake proximity pairs.
+Uses H* for foot projection. Zone and dwell score against gt_events_<cam>.csv.
+Proximity uses the 1 m-inset inner area on both predicted and GT sides.
 
-Also runs an oracle that treats ground-truth boxes as tracks, so the cost of
-the box bottom-center foot convention is visible without detection error.
+Inputs:  results/tracks/, id maps, configs/events.yaml, outputs/gt_events_C1.csv
+Outputs: outputs/events_on_tracks_C1.csv, gt_events_C1_proximity_inner.csv
+
+Example:
+    python scripts/run_events_on_tracks.py --cam C1
 """
 
 from __future__ import annotations
@@ -23,7 +23,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.evaluation import EVENT_TYPES, score_events, score_events_anonymous
 from src.events import (
     detect_dwell_events,
@@ -46,7 +52,9 @@ LATE_DELAY_S = 2.0
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--cam", default="C1")
     parser.add_argument("--data-root", default=DATA_ROOT)
     parser.add_argument("--tracks-dir", default=str(project_root() / "results" / "tracks"))
@@ -59,10 +67,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def filter_inner_area(tracks: pd.DataFrame, margin_m: float = DEFAULT_BOUNDARY_MARGIN_M) -> pd.DataFrame:
+def filter_inner_area(
+    tracks: pd.DataFrame, margin_m: float = DEFAULT_BOUNDARY_MARGIN_M
+) -> pd.DataFrame:
     """Keep rows whose (X_m, Y_m) lie in the annotated area shrunk by margin_m."""
     if tracks.empty:
-        return tracks.loc[:, [column for column in EVENT_TRACK_COLUMNS if column in tracks.columns]].copy()
+        return tracks.loc[
+            :, [column for column in EVENT_TRACK_COLUMNS if column in tracks.columns]
+        ].copy()
     keep = in_ground_area(tracks["X_m"].to_numpy(), tracks["Y_m"].to_numpy(), margin_m)
     return tracks.loc[keep].reset_index(drop=True)
 
@@ -87,7 +99,9 @@ def detect_events_on_positions(
     combined = pd.concat([zone_events, dwell_events, proximity_events], ignore_index=True)
     if combined.empty:
         return combined
-    return combined.sort_values(["start_time", "event_type"], kind="mergesort").reset_index(drop=True)
+    return combined.sort_values(["start_time", "event_type"], kind="mergesort").reset_index(
+        drop=True
+    )
 
 
 def positions_from_tracks(
@@ -155,7 +169,9 @@ def _delay_stats(matches: pd.DataFrame, event_type: str) -> dict[str, float]:
     if matches.empty:
         delays = np.array([], dtype=float)
     else:
-        delays = matches.loc[matches["event_type"] == event_type, "start_delay"].to_numpy(dtype=float)
+        delays = matches.loc[matches["event_type"] == event_type, "start_delay"].to_numpy(
+            dtype=float
+        )
     if len(delays) == 0:
         return {
             f"start_delay_mean_{event_type}": float("nan"),
@@ -165,7 +181,9 @@ def _delay_stats(matches: pd.DataFrame, event_type: str) -> dict[str, float]:
     return {
         f"start_delay_mean_{event_type}": float(np.mean(delays)),
         f"start_delay_median_{event_type}": float(np.median(delays)),
-        f"start_delay_frac_gt_{LATE_DELAY_S:g}s_{event_type}": float(np.mean(delays > LATE_DELAY_S)),
+        f"start_delay_frac_gt_{LATE_DELAY_S:g}s_{event_type}": float(
+            np.mean(delays > LATE_DELAY_S)
+        ),
     }
 
 
@@ -195,8 +213,12 @@ def _combine_type_scores(
     )
     matches = pd.concat(
         [
-            matches_zd.loc[matches_zd["event_type"].isin(["zone", "dwell"])] if len(matches_zd) else matches_zd,
-            matches_pr.loc[matches_pr["event_type"] == "proximity"] if len(matches_pr) else matches_pr,
+            matches_zd.loc[matches_zd["event_type"].isin(["zone", "dwell"])]
+            if len(matches_zd)
+            else matches_zd,
+            matches_pr.loc[matches_pr["event_type"] == "proximity"]
+            if len(matches_pr)
+            else matches_pr,
         ],
         ignore_index=True,
     )
@@ -228,7 +250,9 @@ def score_model_events(
         if event_type in {"zone", "dwell"}:
             for zone in cfg["zones"]:
                 zone_id = str(zone["id"])
-                zone_row = scores.loc[(scores["event_type"] == event_type) & (scores["zone_id"] == zone_id)]
+                zone_row = scores.loc[
+                    (scores["event_type"] == event_type) & (scores["zone_id"] == zone_id)
+                ]
                 out[f"f1_{event_type}_{zone_id}"] = (
                     float(zone_row["f1"].iloc[0]) if len(zone_row) else float("nan")
                 )
@@ -369,27 +393,37 @@ def main() -> None:
         "recall_proximity",
         "f1_proximity",
     ]
-    side_by_side = identity[["model", "f1_zone", "f1_dwell", "f1_proximity"]].rename(
-        columns={
-            "f1_zone": "F1z_id",
-            "f1_dwell": "F1d_id",
-            "f1_proximity": "F1p_id",
-        }
-    ).merge(
-        anonymous[["model", "f1_zone", "f1_dwell", "f1_proximity"]].rename(
+    side_by_side = (
+        identity[["model", "f1_zone", "f1_dwell", "f1_proximity"]]
+        .rename(
             columns={
-                "f1_zone": "F1z_anon",
-                "f1_dwell": "F1d_anon",
-                "f1_proximity": "F1p_anon",
+                "f1_zone": "F1z_id",
+                "f1_dwell": "F1d_id",
+                "f1_proximity": "F1p_id",
             }
-        ),
-        on="model",
+        )
+        .merge(
+            anonymous[["model", "f1_zone", "f1_dwell", "f1_proximity"]].rename(
+                columns={
+                    "f1_zone": "F1z_anon",
+                    "f1_dwell": "F1d_anon",
+                    "f1_proximity": "F1p_anon",
+                }
+            ),
+            on="model",
+        )
     )
 
     print(f"\n{cam_id} identity-based scores (perfect H*, proximity inner margin {margin:g} m)")
-    print(identity[identity_shown].to_string(index=False, float_format=lambda value: f"{value:.3f}"))
-    print(f"\n{cam_id} anonymous scores (zone/dwell by zone+time; proximity by time+midpoint ≤ 1 m)")
-    print(anonymous[anonymous_shown].to_string(index=False, float_format=lambda value: f"{value:.3f}"))
+    print(
+        identity[identity_shown].to_string(index=False, float_format=lambda value: f"{value:.3f}")
+    )
+    print(
+        f"\n{cam_id} anonymous scores (zone/dwell by zone+time; proximity by time+midpoint ≤ 1 m)"
+    )
+    print(
+        anonymous[anonymous_shown].to_string(index=False, float_format=lambda value: f"{value:.3f}")
+    )
     print(f"\n{cam_id} F1 side by side (identity | anonymous)")
     print(side_by_side.to_string(index=False, float_format=lambda value: f"{value:.3f}"))
 

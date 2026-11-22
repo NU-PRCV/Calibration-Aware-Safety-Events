@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Compare C1 vs C6 calibration sweeps (n-points and pitch bump) and plot overlays."""
+"""Compare C1 vs C6 calibration sweeps (n-points and pitch bump) and plot overlays.
+
+Inputs:  outputs/sweep_C{1,6}_npoints.csv, outputs/sweep_C{1,6}_bump.csv
+Outputs: outputs/compare_C1_C6.csv, tolerance_meters_C1_C6.csv,
+         f1_vs_eps_C1_vs_C6.png, f1_vs_bump_C1_vs_C6.png,
+         f1_vs_position_error_C1_C6.png
+
+Example:
+    python scripts/compare_C1_C6.py
+"""
 
 from __future__ import annotations
 
@@ -132,7 +141,9 @@ def plot_f1_vs_position_error(c1: pd.DataFrame, c6: pd.DataFrame, path: Path) ->
         ax.set_xlim(left=0.0)
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle("Event F1 vs mean position error (C1 vs C6)", y=1.14)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -239,7 +250,9 @@ def plot_f1_vs_eps(c1: pd.DataFrame, c6: pd.DataFrame, path: Path) -> None:
         ax.set_ylim(0.0, 1.05)
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle("C1 vs C6 event F1 vs calibration noise", y=1.14)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
@@ -272,7 +285,9 @@ def plot_f1_vs_bump(c1: pd.DataFrame, c6: pd.DataFrame, path: Path) -> None:
         ax.set_ylim(0.0, 1.05)
         ax.grid(True, alpha=0.3)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle("C1 vs C6 event F1 vs pitch bump", y=1.14)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")

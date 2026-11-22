@@ -2,10 +2,16 @@
 """Camera-bump sweep on ground-truth tracks.
 
 After calibration, the camera is rotated by a small angle about one axis of
-its own frame (pitch / yaw / roll). True feet are projected with the bumped
-pose; the system still lifts them with the original H*_img_to_world. Existing
-sweep CSV files are not modified. Pass --cam C6 --axes pitch for the
-second-camera pitch-only study.
+its own frame. True feet are projected with the bumped pose; the system still
+lifts them with the original H*_img_to_world.
+
+Inputs:  configs/events.yaml or events_<cam>.yaml; annotations; gt_events_<cam>.csv
+Outputs: outputs/sweep_<cam>_bump.csv, f1_vs_bump_<cam>.png,
+         position_error_vs_bump_<cam>.png
+
+Example:
+    python scripts/run_sweep_bump.py --cam C1
+    python scripts/run_sweep_bump.py --cam C6 --axes pitch
 """
 
 from __future__ import annotations
@@ -30,7 +36,13 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.evaluation import score_events
 from src.events import (
     detect_dwell_events,
@@ -213,7 +225,9 @@ def _jobs(axes: tuple[str, ...]) -> list[tuple[str, float, int]]:
 def _worker(job: tuple[str, float, int]) -> dict[str, Any]:
     axis, angle, seed = job
     assert _K is not None and _R is not None and _T is not None
-    assert _H_STAR_I2W is not None and _TRACKS is not None and _EVENTS is not None and _CFG is not None
+    assert (
+        _H_STAR_I2W is not None and _TRACKS is not None and _EVENTS is not None and _CFG is not None
+    )
     return run_bump_trial(axis, angle, seed, _K, _R, _T, _H_STAR_I2W, _TRACKS, _EVENTS, _CFG)
 
 
@@ -252,8 +266,7 @@ def _print_summary(frame: pd.DataFrame, axes: tuple[str, ...]) -> None:
         print(
             f"  {'ang':>6}  "
             f"{'F1z':>7} {'F1d':>7} {'F1p':>7}  "
-            f"{'pos':>7}  "
-            + " ".join(f"{'pos_'+z:>7}" for z in ZONE_IDS)
+            f"{'pos':>7}  " + " ".join(f"{'pos_' + z:>7}" for z in ZONE_IDS)
         )
         for angle in ANGLES_DEG:
             f1 = {
@@ -268,8 +281,7 @@ def _print_summary(frame: pd.DataFrame, axes: tuple[str, ...]) -> None:
             print(
                 f"  {angle:6g}  "
                 f"{f1['zone']:7.3f} {f1['dwell']:7.3f} {f1['proximity']:7.3f}  "
-                f"{pos:7.4f}  "
-                + " ".join(f"{v:7.4f}" for v in posz)
+                f"{pos:7.4f}  " + " ".join(f"{v:7.4f}" for v in posz)
             )
 
 
@@ -319,8 +331,7 @@ def _plot_position(frame: pd.DataFrame, path: Path, cam_id: str, axes: tuple[str
     for ax, axis in zip(axes_plot.ravel(), axes):
         for label, column in scopes:
             ys = [
-                float(np.nanmean(_group(frame, axis, float(angle), column)))
-                for angle in ANGLES_DEG
+                float(np.nanmean(_group(frame, axis, float(angle), column))) for angle in ANGLES_DEG
             ]
             color = ZONE_COLORS.get(label, AXIS_COLORS[axis])
             ax.plot(
@@ -418,7 +429,9 @@ def main() -> None:
             results.append(_worker(job))
 
     frame = pd.DataFrame(results)
-    frame = frame.sort_values(["axis", "angle_deg", "seed"], kind="mergesort").reset_index(drop=True)
+    frame = frame.sort_values(["axis", "angle_deg", "seed"], kind="mergesort").reset_index(
+        drop=True
+    )
     frame = frame[_column_order(list(frame.columns))]
 
     output_dir = project_root() / "outputs"

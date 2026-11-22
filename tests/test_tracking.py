@@ -11,16 +11,15 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
-
 from src.tracking import (
     DETECTION_COLUMNS,
     TRACK_COLUMNS,
     annotated_frames,
     box_iou,
-    count_id_switches,
-    detection_rows,
     classify_distant_feet,
     classify_missed_people,
+    count_id_switches,
+    detection_rows,
     drop_outside_ground_area,
     ground_error_components,
     in_ground_area,
@@ -29,12 +28,12 @@ from src.tracking import (
     match_tracks_to_gt,
     nearest_gt_distance,
     recall_by_camera_distance,
-    tracking_summary_ground,
     relabel_tracks,
     run_tracker,
     save_csv,
     track_to_person_map,
     tracking_summary,
+    tracking_summary_ground,
     validate_tracks,
 )
 
@@ -46,8 +45,20 @@ def _gt(frames: int) -> pd.DataFrame:
     """Two people standing still for some frames."""
     rows = []
     for frame_idx in range(frames):
-        rows.append({"frame_idx": frame_idx, "person_id": 7, **dict(zip(["xmin", "ymin", "xmax", "ymax"], BOX_A))})
-        rows.append({"frame_idx": frame_idx, "person_id": 9, **dict(zip(["xmin", "ymin", "xmax", "ymax"], BOX_B))})
+        rows.append(
+            {
+                "frame_idx": frame_idx,
+                "person_id": 7,
+                **dict(zip(["xmin", "ymin", "xmax", "ymax"], BOX_A)),
+            }
+        )
+        rows.append(
+            {
+                "frame_idx": frame_idx,
+                "person_id": 9,
+                **dict(zip(["xmin", "ymin", "xmax", "ymax"], BOX_B)),
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -131,7 +142,9 @@ def test_false_positive_lowers_precision() -> None:
     extra = tracks.iloc[[0]].assign(track_id=5, xmin=900.0, xmax=950.0)
     summary = tracking_summary(pd.concat([tracks, extra], ignore_index=True), gt)
     assert summary["det_precision"] == pytest.approx(4 / 5)
-    mapping = track_to_person_map(match_tracks_to_gt(pd.concat([tracks, extra]), gt), pd.concat([tracks, extra]))
+    mapping = track_to_person_map(
+        match_tracks_to_gt(pd.concat([tracks, extra]), gt), pd.concat([tracks, extra])
+    )
     assert int(mapping.loc[mapping["track_id"] == 5, "person_id"].iloc[0]) == -5
 
 
@@ -227,7 +240,9 @@ def test_recall_by_camera_distance_uses_three_bins() -> None:
     assert [row["gt"] for row in rows] == [1, 1, 1]
 
 
-def _box_row(frame: int, xmin: float, ymin: float, xmax: float, ymax: float, **extra: float) -> dict[str, float]:
+def _box_row(
+    frame: int, xmin: float, ymin: float, xmax: float, ymax: float, **extra: float
+) -> dict[str, float]:
     row = {"frame_idx": frame, "xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
     row.update(extra)
     return row
@@ -312,7 +327,9 @@ class _EchoTracker:
 
     def update(self, boxes: np.ndarray, scores: np.ndarray, image_path: str):
         self.seen.append((len(boxes), image_path))
-        return [(index + 1, box, float(score)) for index, (box, score) in enumerate(zip(boxes, scores))]
+        return [
+            (index + 1, box, float(score)) for index, (box, score) in enumerate(zip(boxes, scores))
+        ]
 
 
 def test_run_tracker_feeds_every_frame_including_empty_ones() -> None:

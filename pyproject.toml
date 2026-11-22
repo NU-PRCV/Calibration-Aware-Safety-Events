@@ -1,0 +1,50 @@
+[project]
+name = "calibration-aware-safety-events"
+version = "0.1.0"
+description = "How calibration error affects zone, dwell, and proximity alarms on WILDTRACK."
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8",
+    "pytest",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "scripts", "app", "tests"]
+extend-exclude = ["data", "outputs", "results", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear (shadowing, bare except, …)
+    "SIM", # simplify
+]
+ignore = [
+    "E501",   # line length handled by the formatter / docstrings
+    "B008",   # function calls in defaults (argparse defaults are fine)
+    "B905",   # zip(..., strict=True) is noisier than useful here
+    "SIM108", # ternary vs if/else: prefer readability
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts and the demo put the repo root on sys.path before importing src.
+"scripts/*" = ["E402"]
+"app/*" = ["E402"]
+"tests/*" = ["B011", "E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

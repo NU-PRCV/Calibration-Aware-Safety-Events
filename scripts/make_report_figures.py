@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Rebuild every final report figure and table from saved CSVs only.
 
-Writes PDF + PNG figures and CSV + LaTeX tables under outputs/report/.
+Inputs:  CSVs under outputs/ (sweeps, tracking summaries, tolerances, …).
+Outputs: PDF/PNG figures and CSV/LaTeX tables under outputs/report/.
 Missing inputs are reported and skipped; no new experiments are run.
+
+Example:
+    python scripts/make_report_figures.py
 """
 
 from __future__ import annotations
@@ -277,13 +281,17 @@ def fig_npoints(npoints: pd.DataFrame, out: Path, created: list[str]) -> None:
         ax.set_title(event_type)
         ax.set_ylim(0.55, 1.02)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.08)
+    )
     fig.suptitle("F1 vs noise by number of calibration points", y=1.14, fontsize=TITLE_SIZE)
     fig.tight_layout()
     _save_fig(fig, out / "fig_npoints", created)
 
 
-def fig_pred_tracks(pred: pd.DataFrame, gt: pd.DataFrame | None, out: Path, created: list[str]) -> None:
+def fig_pred_tracks(
+    pred: pd.DataFrame, gt: pd.DataFrame | None, out: Path, created: list[str]
+) -> None:
     fig, axes = plt.subplots(1, 3, figsize=FIG_DOUBLE_TALL, sharey=True)
     models = [m for m in MODEL_ORDER if m in set(pred["model"])]
     for ax, event_type in zip(axes, EVENT_TYPES):
@@ -310,11 +318,15 @@ def fig_pred_tracks(pred: pd.DataFrame, gt: pd.DataFrame | None, out: Path, crea
                 linewidth=1.3,
                 label="GT tracks",
             )
-        _style_eps_axis(ax, np.asarray(_eps_levels(pred)), "anonymous F1" if event_type == "zone" else "")
+        _style_eps_axis(
+            ax, np.asarray(_eps_levels(pred)), "anonymous F1" if event_type == "zone" else ""
+        )
         ax.set_title(event_type)
         ax.set_ylim(0.0, 1.05)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.12))
+    fig.legend(
+        handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.12)
+    )
     fig.suptitle("Anonymous F1 on predicted tracks", y=1.18, fontsize=TITLE_SIZE)
     fig.tight_layout()
     _save_fig(fig, out / "fig_pred_tracks", created)
@@ -332,11 +344,11 @@ def fig_perception_vs_calibration(
         vals = gt.loc[np.isclose(gt["eps_px"], 10.0), f"f1_{event_type}"].to_numpy(dtype=float)
         calib.append(float(np.mean(vals)))
     track = []
-    row = events.loc[
-        (events["model"] == BEST_TRACKER) & (events["scoring"] == "identity")
-    ]
+    row = events.loc[(events["model"] == BEST_TRACKER) & (events["scoring"] == "identity")]
     if row.empty:
-        print(f"MISSING  identity row for {BEST_TRACKER} in events_on_tracks — skipping fig_perception_vs_calibration")
+        print(
+            f"MISSING  identity row for {BEST_TRACKER} in events_on_tracks — skipping fig_perception_vs_calibration"
+        )
         return
     row = row.iloc[0]
     for event_type in EVENT_TYPES:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import cv2
 import numpy as np
 import pytest
-
 from src.data import CAMERA_TO_CALIB, DATA_ROOT
 from src.geometry import (
     ground_homography,

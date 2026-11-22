@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
-"""Diagnose box bottom-center feet. The main match distance stays 0.5 m.
+"""Diagnose box bottom-center feet and the perception error budget.
 
-1. Oracle: project the ground-truth boxes themselves and match at 0.5 m.
-2. Distance from every in-area foot to the nearest ground-truth position.
-3. Along-view and sideways bias of pairs matched at a looser 1.0 m.
-4. Precision, recall, and MOTA at 0.5, 0.75, and 1.0 m.
-5. Recall in 0-10 m, 10-20 m, and beyond 20 m from the camera.
-6. Raw detections versus the trackers built on them.
-7. Why feet farther than 1 m from every person are wrong, and why people are missed.
-8. Whether "no_person" feet sit on people annotated but not visible in this camera.
-9. Looser tracker settings for yolo11x (diagnostic files only; main tracks stay put).
-10. For yolo11x + DeepSORT: a top-down no_person map and a grid of 24 random crops.
+Oracle feet, nearest-GT distances, range bias, detector vs tracker, and
+why distant / missed feet fail. Main match distance stays 0.5 m.
 
-The histogram is outputs/tracks/nearest_gt_distance_<cam>.png.
-Example frames are outputs/tracks/diagnose_<cam>_yolo11x_deepsort_*.png.
-no_person map/crops are outputs/tracks/no_person_*_<cam>.png.
+Inputs:  results/detections/, results/tracks/, annotations, calibration
+Outputs: plots under outputs/tracks/ (nearest_gt_distance, diagnose_*, no_person_*)
+
+Example:
+    python scripts/diagnose_foot_points.py --cam C1
 """
 
 from __future__ import annotations
@@ -33,7 +27,14 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import ANNOTATED_FPS, DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    ANNOTATED_FPS,
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.events import load_event_config
 from src.tracking import (
     CUT_OFF_BOTTOM_Y,
@@ -102,7 +103,9 @@ LINE_COLORS = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--cam", default="C1")
     parser.add_argument("--data-root", default=DATA_ROOT)
     parser.add_argument("--tracks-dir", default=str(project_root() / "results" / "tracks"))
@@ -138,7 +141,12 @@ def _distance_shares(distances: np.ndarray) -> dict[str, float]:
     """Share of feet within 0.5 m, from 0.5 to 1.0 m, and beyond 1.0 m."""
     count = len(distances)
     if count == 0:
-        return {"n": 0, "within_0.5": float("nan"), "mid_0.5_1": float("nan"), "beyond_1": float("nan")}
+        return {
+            "n": 0,
+            "within_0.5": float("nan"),
+            "mid_0.5_1": float("nan"),
+            "beyond_1": float("nan"),
+        }
     return {
         "n": count,
         "within_0.5": float(np.mean(distances <= 0.5)),
@@ -164,7 +172,7 @@ def _save_histogram(series: dict[str, np.ndarray], path: Path) -> None:
         ax.plot(
             centers,
             share,
-            color=LINE_COLORS.get(name, None),
+            color=LINE_COLORS.get(name),
             linestyle="--" if name == ORACLE_NAME else "-",
             linewidth=2.0 if name == ORACLE_NAME else 1.5,
             label=name,
@@ -184,7 +192,9 @@ def _save_histogram(series: dict[str, np.ndarray], path: Path) -> None:
     plt.close(fig)
 
 
-def _bias(on_ground: pd.DataFrame, positions: pd.DataFrame, camera_xy: np.ndarray) -> dict[str, float]:
+def _bias(
+    on_ground: pd.DataFrame, positions: pd.DataFrame, camera_xy: np.ndarray
+) -> dict[str, float]:
     """Median along-view and sideways error of pairs within 1.0 m."""
     pred_xy, true_xy = matched_foot_coordinates(on_ground, positions, BIAS_DISTANCE_M)
     along, sideways = ground_error_components(pred_xy, true_xy, camera_xy)
@@ -207,13 +217,17 @@ def main() -> None:
     tracks_dir = Path(args.tracks_dir)
     files = list(iter_track_files(tracks_dir, cam_id))
     if not files:
-        raise FileNotFoundError(f"No tracks_{cam_id}_*.csv in {tracks_dir}. Run scripts/run_tracking.py first.")
+        raise FileNotFoundError(
+            f"No tracks_{cam_id}_*.csv in {tracks_dir}. Run scripts/run_tracking.py first."
+        )
 
     annotations = load_annotations(resolve_dataset_root(args.data_root), cam_id)
     positions = gt_positions(annotations)
     camera_xy = camera_ground_xy(cam_id)
     print(f"{cam_id} camera ground position ({camera_xy[0]:.3f}, {camera_xy[1]:.3f}) m")
-    print(f"Main ground-plane match stays at {MATCH_DISTANCE_M:g} m. Bias pairs use {BIAS_DISTANCE_M:g} m.")
+    print(
+        f"Main ground-plane match stays at {MATCH_DISTANCE_M:g} m. Bias pairs use {BIAS_DISTANCE_M:g} m."
+    )
 
     oracle_boxes = _oracle_boxes(annotations)
     oracle_feet, oracle_dropped = _prepare(oracle_boxes, cam_id)
@@ -237,7 +251,12 @@ def main() -> None:
         models.append({"name": name, "feet": on_ground, "boxes": tracks, "covered": covered})
 
     distances = {ORACLE_NAME: nearest_gt_distance(oracle_feet, positions)}
-    distances.update({str(model["name"]): nearest_gt_distance(model["feet"], model["covered"]) for model in models})
+    distances.update(
+        {
+            str(model["name"]): nearest_gt_distance(model["feet"], model["covered"])
+            for model in models
+        }
+    )
     shares = pd.DataFrame(
         [{"model": name, **_distance_shares(values)} for name, values in distances.items()]
     )
@@ -247,7 +266,10 @@ def main() -> None:
     print(f"Saved {histogram_path.name}")
 
     bias_rows = [{"model": ORACLE_NAME, **_bias(oracle_feet, positions, camera_xy)}]
-    bias_rows.extend({"model": model["name"], **_bias(model["feet"], model["covered"], camera_xy)} for model in models)
+    bias_rows.extend(
+        {"model": model["name"], **_bias(model["feet"], model["covered"], camera_xy)}
+        for model in models
+    )
     _print_table(
         "Median error of pairs within 1.0 m. along > 0 means the foot is closer to the camera than the truth",
         pd.DataFrame(bias_rows),
@@ -263,7 +285,10 @@ def main() -> None:
             row[f"R_{label}"] = summary["det_recall"]
             row[f"MOTA_{label}"] = summary["mota"]
         threshold_rows.append(row)
-    _print_table("Ground-plane precision, recall, and MOTA at three match distances", pd.DataFrame(threshold_rows))
+    _print_table(
+        "Ground-plane precision, recall, and MOTA at three match distances",
+        pd.DataFrame(threshold_rows),
+    )
 
     range_rows = []
     oracle_matches = match_tracks_ground(oracle_feet, positions, MATCH_DISTANCE_M)
@@ -290,7 +315,9 @@ def _detector_name(track_name: str, detectors: list[str]) -> str | None:
     return max(matches, key=len)
 
 
-def _score_detections(detections: pd.DataFrame, cam_id: str, positions: pd.DataFrame) -> dict[str, float]:
+def _score_detections(
+    detections: pd.DataFrame, cam_id: str, positions: pd.DataFrame
+) -> dict[str, float]:
     """Ground-plane precision and recall for one confidence subset, at 0.5 m."""
     labeled = detections.copy()
     labeled["track_id"] = np.arange(len(labeled), dtype=int)
@@ -311,9 +338,13 @@ def _detector_vs_tracker(
     files = sorted(det_dir.glob(f"det_{cam_id}_*.csv"))
     files = [path for path in files if not path.stem.endswith("_summary")]
     if not files:
-        raise FileNotFoundError(f"No det_{cam_id}_*.csv in {det_dir}. Run scripts/run_detection.py first.")
+        raise FileNotFoundError(
+            f"No det_{cam_id}_*.csv in {det_dir}. Run scripts/run_detection.py first."
+        )
     tracker_recall = {
-        str(model["name"]): tracking_summary_ground(model["feet"], model["covered"], MATCH_DISTANCE_M)["det_recall"]
+        str(model["name"]): tracking_summary_ground(
+            model["feet"], model["covered"], MATCH_DISTANCE_M
+        )["det_recall"]
         for model in models
     }
     detectors = [path.stem.removeprefix(f"det_{cam_id}_") for path in files]
@@ -323,7 +354,11 @@ def _detector_vs_tracker(
         built = [name for name in tracker_recall if _detector_name(name, detectors) == detector]
         for threshold in DETECTION_CONFIDENCE:
             kept = detections.loc[detections["score"] >= threshold]
-            scores = _score_detections(kept, cam_id, positions) if len(kept) else {"det_P": float("nan"), "det_R": float("nan")}
+            scores = (
+                _score_detections(kept, cam_id, positions)
+                if len(kept)
+                else {"det_P": float("nan"), "det_R": float("nan")}
+            )
             row: dict[str, float | str] = {"detector": detector, "conf": threshold, **scores}
             for name in built:
                 tracker = name.removeprefix(detector + "_")
@@ -348,16 +383,39 @@ def _category_row(model: str, labels: np.ndarray) -> dict[str, float | str]:
 def _range_labels(x_m: np.ndarray, y_m: np.ndarray, camera_xy: np.ndarray) -> np.ndarray:
     distance = np.hypot(x_m - camera_xy[0], y_m - camera_xy[1])
     bin_id = np.digitize(distance, np.asarray(RANGE_EDGES_M, dtype=np.float64))
-    names = (f"0-{RANGE_EDGES_M[0]:g}", f"{RANGE_EDGES_M[0]:g}-{RANGE_EDGES_M[1]:g}", f">{RANGE_EDGES_M[1]:g}")
+    names = (
+        f"0-{RANGE_EDGES_M[0]:g}",
+        f"{RANGE_EDGES_M[0]:g}-{RANGE_EDGES_M[1]:g}",
+        f">{RANGE_EDGES_M[1]:g}",
+    )
     return np.asarray(names, dtype=object)[bin_id]
 
 
-def _miss_rows(model: str, missed: pd.DataFrame, camera_xy: np.ndarray) -> list[dict[str, float | str]]:
+def _miss_rows(
+    model: str, missed: pd.DataFrame, camera_xy: np.ndarray
+) -> list[dict[str, float | str]]:
     if missed.empty:
-        return [{"model": model, "bin": "all", "n": 0, "detected_foot_wrong": float("nan"), "not_detected": float("nan")}]
-    bins = _range_labels(missed["X_m"].to_numpy(dtype=float), missed["Y_m"].to_numpy(dtype=float), camera_xy)
+        return [
+            {
+                "model": model,
+                "bin": "all",
+                "n": 0,
+                "detected_foot_wrong": float("nan"),
+                "not_detected": float("nan"),
+            }
+        ]
+    bins = _range_labels(
+        missed["X_m"].to_numpy(dtype=float), missed["Y_m"].to_numpy(dtype=float), camera_xy
+    )
     groups = [("all", np.ones(len(missed), dtype=bool))]
-    groups.extend((name, bins == name) for name in (f"0-{RANGE_EDGES_M[0]:g}", f"{RANGE_EDGES_M[0]:g}-{RANGE_EDGES_M[1]:g}", f">{RANGE_EDGES_M[1]:g}"))
+    groups.extend(
+        (name, bins == name)
+        for name in (
+            f"0-{RANGE_EDGES_M[0]:g}",
+            f"{RANGE_EDGES_M[0]:g}-{RANGE_EDGES_M[1]:g}",
+            f">{RANGE_EDGES_M[1]:g}",
+        )
+    )
     rows = []
     for name, chosen in groups:
         reasons = missed.iloc[np.flatnonzero(chosen)]["reason"]
@@ -367,8 +425,12 @@ def _miss_rows(model: str, missed: pd.DataFrame, camera_xy: np.ndarray) -> list[
                 "model": model,
                 "bin": name,
                 "n": count,
-                "detected_foot_wrong": float(np.mean(reasons == "detected_foot_wrong")) if count else float("nan"),
-                "not_detected": float(np.mean(reasons == "not_detected")) if count else float("nan"),
+                "detected_foot_wrong": float(np.mean(reasons == "detected_foot_wrong"))
+                if count
+                else float("nan"),
+                "not_detected": float(np.mean(reasons == "not_detected"))
+                if count
+                else float("nan"),
             }
         )
     return rows
@@ -378,17 +440,32 @@ def _nearby_gt(frame_gt: pd.DataFrame, box: pd.Series, foot_xy: np.ndarray) -> p
     """Ground-truth boxes near this prediction, in the image or on the ground."""
     if frame_gt.empty:
         return frame_gt
-    center_x = (frame_gt["xmin"].to_numpy(dtype=float) + frame_gt["xmax"].to_numpy(dtype=float)) / 2.0
-    center_y = (frame_gt["ymin"].to_numpy(dtype=float) + frame_gt["ymax"].to_numpy(dtype=float)) / 2.0
+    center_x = (
+        frame_gt["xmin"].to_numpy(dtype=float) + frame_gt["xmax"].to_numpy(dtype=float)
+    ) / 2.0
+    center_y = (
+        frame_gt["ymin"].to_numpy(dtype=float) + frame_gt["ymax"].to_numpy(dtype=float)
+    ) / 2.0
     pred_x = (float(box["xmin"]) + float(box["xmax"])) / 2.0
     pred_y = (float(box["ymin"]) + float(box["ymax"])) / 2.0
     near_pixels = np.hypot(center_x - pred_x, center_y - pred_y) <= 250.0
-    near_ground = np.hypot(frame_gt["X_m"].to_numpy(dtype=float) - foot_xy[0], frame_gt["Y_m"].to_numpy(dtype=float) - foot_xy[1]) <= 4.0
-    prediction = pd.DataFrame([{column: box[column] for column in ("frame_idx", "xmin", "ymin", "xmax", "ymax")}])
+    near_ground = (
+        np.hypot(
+            frame_gt["X_m"].to_numpy(dtype=float) - foot_xy[0],
+            frame_gt["Y_m"].to_numpy(dtype=float) - foot_xy[1],
+        )
+        <= 4.0
+    )
+    prediction = pd.DataFrame(
+        [{column: box[column] for column in ("frame_idx", "xmin", "ymin", "xmax", "ymax")}]
+    )
     overlap = max_frame_iou(frame_gt, prediction) > 0.0
     keep = near_pixels | near_ground | overlap
     if not np.any(keep):
-        ground = np.hypot(frame_gt["X_m"].to_numpy(dtype=float) - foot_xy[0], frame_gt["Y_m"].to_numpy(dtype=float) - foot_xy[1])
+        ground = np.hypot(
+            frame_gt["X_m"].to_numpy(dtype=float) - foot_xy[0],
+            frame_gt["Y_m"].to_numpy(dtype=float) - foot_xy[1],
+        )
         keep = np.zeros(len(frame_gt), dtype=bool)
         keep[int(np.argmin(ground))] = True
     return frame_gt.iloc[np.flatnonzero(keep)]
@@ -412,17 +489,28 @@ def _crop_around(image: np.ndarray, regions: np.ndarray, margin: int = 80) -> np
     return image[y0:y1, x0:x1]
 
 
-def _draw_example(image_path: str, box: pd.Series, nearby: pd.DataFrame, title: str, path: Path) -> None:
+def _draw_example(
+    image_path: str, box: pd.Series, nearby: pd.DataFrame, title: str, path: Path
+) -> None:
     """One predicted box, its bottom-center foot, and the nearby ground-truth boxes."""
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if image is None:
         raise FileNotFoundError(f"Could not read {image_path}")
     for row in nearby.itertuples(index=False):
-        cv2.rectangle(image, (int(row.xmin), int(row.ymin)), (int(row.xmax), int(row.ymax)), (255, 255, 255), 1)
+        cv2.rectangle(
+            image,
+            (int(row.xmin), int(row.ymin)),
+            (int(row.xmax), int(row.ymax)),
+            (255, 255, 255),
+            1,
+        )
     color = (0, 180, 255)
     top_left = (int(box["xmin"]), int(box["ymin"]))
     cv2.rectangle(image, top_left, (int(box["xmax"]), int(box["ymax"])), color, 2)
-    foot = (int(round((float(box["xmin"]) + float(box["xmax"])) / 2.0)), int(round(float(box["ymax"]))))
+    foot = (
+        int(round((float(box["xmin"]) + float(box["xmax"])) / 2.0)),
+        int(round(float(box["ymax"]))),
+    )
     cv2.circle(image, foot, 7, (0, 0, 0), -1)
     cv2.circle(image, foot, 5, (0, 255, 255), -1)
     label = f"{float(box['score']):.2f}"
@@ -443,7 +531,9 @@ def _draw_example(image_path: str, box: pd.Series, nearby: pd.DataFrame, title: 
         image = padded
     banner = np.zeros((text_height + baseline + 14, width, 3), dtype=np.uint8)
     image = np.vstack([banner, image])
-    cv2.putText(image, title, (8, text_height + 8), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    cv2.putText(
+        image, title, (8, text_height + 8), font, scale, (255, 255, 255), thickness, cv2.LINE_AA
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(path), image):
         raise OSError(f"Could not write {path}")
@@ -476,7 +566,9 @@ def _save_examples(
         nearby = _nearby_gt(frame_gt, example, foot_xy)
         title = f"{cam_id} {EXAMPLE_MODEL} {category} frame {int(example['frame_idx'])}"
         path = output_dir / f"diagnose_{cam_id}_{EXAMPLE_MODEL}_{category}.png"
-        _draw_example(str(image_by_frame.loc[int(example["frame_idx"])]), example, nearby, title, path)
+        _draw_example(
+            str(image_by_frame.loc[int(example["frame_idx"])]), example, nearby, title, path
+        )
         print(f"Saved {path.name}")
 
 
@@ -519,7 +611,9 @@ def _save_no_person_map(
         closed = np.vstack([polygon, polygon[0]])
         ax.plot(closed[:, 0], closed[:, 1], color=color, linewidth=2.0, zorder=2)
         center = polygon.mean(axis=0)
-        ax.text(center[0], center[1], str(zone["name"]), ha="center", va="center", fontsize=9, zorder=4)
+        ax.text(
+            center[0], center[1], str(zone["name"]), ha="center", va="center", fontsize=9, zorder=4
+        )
     ax.set_xlim(GROUND_X_MIN_M, GROUND_X_MAX_M)
     ax.set_ylim(GROUND_Y_MIN_M, GROUND_Y_MAX_M)
     ax.set_aspect("equal", adjustable="box")
@@ -545,7 +639,9 @@ def _box_crop(image: np.ndarray, row: pd.Series, pad: int = 4) -> np.ndarray:
     if x1 <= x0 or y1 <= y0:
         return np.zeros((NO_PERSON_CROP_SIZE, NO_PERSON_CROP_SIZE, 3), dtype=np.uint8)
     crop = image[y0:y1, x0:x1]
-    return cv2.resize(crop, (NO_PERSON_CROP_SIZE, NO_PERSON_CROP_SIZE), interpolation=cv2.INTER_AREA)
+    return cv2.resize(
+        crop, (NO_PERSON_CROP_SIZE, NO_PERSON_CROP_SIZE), interpolation=cv2.INTER_AREA
+    )
 
 
 def _save_no_person_crops(
@@ -585,7 +681,9 @@ def _save_no_person_crops(
         for spine in axis.spines.values():
             spine.set_color("#d62728")
             spine.set_linewidth(1.5)
-    fig.suptitle(f"{cam_id} {EXAMPLE_MODEL}: {len(sample)} random no_person crops (seed {NO_PERSON_CROP_SEED})")
+    fig.suptitle(
+        f"{cam_id} {EXAMPLE_MODEL}: {len(sample)} random no_person crops (seed {NO_PERSON_CROP_SEED})"
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
@@ -595,7 +693,9 @@ def _save_no_person_crops(
 
 def _invisible_in_area(annotations: pd.DataFrame) -> pd.DataFrame:
     """Annotated people inside the ground rectangle who are not visible in this camera."""
-    hidden = annotations.loc[~annotations["visible"], ["frame_idx", "person_id", "X_m", "Y_m"]].copy()
+    hidden = annotations.loc[
+        ~annotations["visible"], ["frame_idx", "person_id", "X_m", "Y_m"]
+    ].copy()
     keep = in_ground_area(hidden["X_m"].to_numpy(), hidden["Y_m"].to_numpy())
     return hidden.loc[keep].reset_index(drop=True)
 
@@ -644,8 +744,12 @@ def _no_person_near_invisible(
                 "n": count,
                 "within_0.5_any": float(np.mean(nearest_any <= 0.5)) if count else float("nan"),
                 "within_1.0_any": float(np.mean(nearest_any <= 1.0)) if count else float("nan"),
-                "within_0.5_not_visible": float(np.mean(nearest_hidden <= 0.5)) if count else float("nan"),
-                "within_1.0_not_visible": float(np.mean(nearest_hidden <= 1.0)) if count else float("nan"),
+                "within_0.5_not_visible": float(np.mean(nearest_hidden <= 0.5))
+                if count
+                else float("nan"),
+                "within_1.0_not_visible": float(np.mean(nearest_hidden <= 1.0))
+                if count
+                else float("nan"),
             }
         )
     _print_table(
@@ -654,7 +758,9 @@ def _no_person_near_invisible(
     )
 
 
-def _score_track_table(tracks: pd.DataFrame, cam_id: str, positions: pd.DataFrame) -> dict[str, float]:
+def _score_track_table(
+    tracks: pd.DataFrame, cam_id: str, positions: pd.DataFrame
+) -> dict[str, float]:
     """Ground-plane summary used for the default-versus-loose comparison."""
     feet, _dropped = _prepare(tracks, cam_id)
     covered = positions.loc[positions["frame_idx"] <= int(tracks["frame_idx"].max())]
@@ -682,7 +788,9 @@ def _tracker_sensitivity(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     default_scores = {
-        str(model["name"]): tracking_summary_ground(model["feet"], model["covered"], MATCH_DISTANCE_M)
+        str(model["name"]): tracking_summary_ground(
+            model["feet"], model["covered"], MATCH_DISTANCE_M
+        )
         for model in models
         if str(model["name"]).startswith(SENSITIVITY_DETECTOR + "_")
     }
@@ -690,12 +798,16 @@ def _tracker_sensitivity(
         (
             "bytetrack",
             "bytetrack_loose",
-            ByteTrackTracker(fps=ANNOTATED_FPS, max_lost_seconds=MAX_LOST_SECONDS, **LOOSE_BYTE_TRACK),
+            ByteTrackTracker(
+                fps=ANNOTATED_FPS, max_lost_seconds=MAX_LOST_SECONDS, **LOOSE_BYTE_TRACK
+            ),
         ),
         (
             "deepsort",
             "deepsort_loose",
-            DeepSortTracker(fps=ANNOTATED_FPS, max_lost_seconds=MAX_LOST_SECONDS, **LOOSE_DEEP_SORT),
+            DeepSortTracker(
+                fps=ANNOTATED_FPS, max_lost_seconds=MAX_LOST_SECONDS, **LOOSE_DEEP_SORT
+            ),
         ),
     ]
     rows = []
@@ -746,7 +858,10 @@ def _error_breakdown(
 ) -> None:
     """Classify distant feet and missed people, and save three example frames."""
     boxes = gt_boxes(annotations)
-    people = annotations.loc[annotations["visible"], ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax", "X_m", "Y_m"]].reset_index(drop=True)
+    people = annotations.loc[
+        annotations["visible"],
+        ["frame_idx", "person_id", "xmin", "ymin", "xmax", "ymax", "X_m", "Y_m"],
+    ].reset_index(drop=True)
     distant_rows = []
     miss_rows = []
     example_cases: pd.DataFrame | None = None
@@ -765,8 +880,13 @@ def _error_breakdown(
             cases = feet.copy()
             cases["category"] = labels
             cases["max_iou"] = max_frame_iou(feet, boxes)
-            example_cases = cases.loc[cases["category"].isin(EXAMPLE_CATEGORIES)].reset_index(drop=True)
-    _print_table(f"Share of in-area feet more than {DISTANT_FOOT_M:g} m from every ground-truth person", pd.DataFrame(distant_rows))
+            example_cases = cases.loc[cases["category"].isin(EXAMPLE_CATEGORIES)].reset_index(
+                drop=True
+            )
+    _print_table(
+        f"Share of in-area feet more than {DISTANT_FOOT_M:g} m from every ground-truth person",
+        pd.DataFrame(distant_rows),
+    )
     _print_table("Share of ground-truth people missed at 0.5 m", pd.DataFrame(miss_rows))
     _no_person_near_invisible(models, annotations, boxes)
     if example_cases is None:
@@ -778,8 +898,12 @@ def _error_breakdown(
     _save_examples(cam_id, example_cases, people, image_by_frame, output_dir)
     no_person = example_cases.loc[example_cases["category"] == "no_person"].reset_index(drop=True)
     zones = list(load_event_config(project_root() / "configs" / "events.yaml")["zones"])
-    _save_no_person_map(cam_id, no_person, positions, zones, output_dir / f"no_person_map_{cam_id}.png")
-    _save_no_person_crops(cam_id, no_person, image_by_frame, output_dir / f"no_person_crops_{cam_id}.png")
+    _save_no_person_map(
+        cam_id, no_person, positions, zones, output_dir / f"no_person_map_{cam_id}.png"
+    )
+    _save_no_person_crops(
+        cam_id, no_person, image_by_frame, output_dir / f"no_person_crops_{cam_id}.png"
+    )
 
 
 if __name__ == "__main__":

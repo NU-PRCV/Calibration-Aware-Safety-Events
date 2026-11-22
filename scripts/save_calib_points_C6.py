@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Save C6 wide (n4) calibration overlay and report which zones lie in the hull."""
+"""Save C6 wide (n4) calibration overlay and report which zones lie in the hull.
+
+Inputs:  configs/events_C6.yaml, C6 calibration / first frame
+Outputs: outputs/calib_points_C6.png; printed hull membership per zone
+
+Example:
+    python scripts/save_calib_points_C6.py
+"""
 
 from __future__ import annotations
 
@@ -28,10 +35,7 @@ def main() -> None:
         f"Y [{world[:, 1].min():.1f}, {world[:, 1].max():.1f}]"
     )
     for index, (xy, uv) in enumerate(zip(world, pixels)):
-        print(
-            f"  {index}: world ({xy[0]:.3f}, {xy[1]:.3f}) m"
-            f"    pixel ({uv[0]:.2f}, {uv[1]:.2f})"
-        )
+        print(f"  {index}: world ({xy[0]:.3f}, {xy[1]:.3f}) m    pixel ({uv[0]:.2f}, {uv[1]:.2f})")
 
     zones = copy.deepcopy(cfg["zones"])
     mark_zones_inside_calibration_hull(zones, world)

@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
-"""Print summary statistics for WILDTRACK annotations on camera C1."""
+"""Print summary statistics for WILDTRACK annotations on one camera.
+
+Inputs:  data/Wildtrack_dataset annotations for --cam (default C1).
+Outputs: printed frame / identity / ground-plane ranges (stdout only).
+
+Example:
+    python scripts/check_annotations.py --cam C1
+"""
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations
+from src.data import DATA_ROOT, load_annotations, normalize_cam_id
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cam", default="C1", help="Camera id (default C1)")
+    return parser.parse_args()
 
 
 def main() -> None:
-    """Load C1 annotations and print frame, identity, and ground-plane ranges."""
-    frame = load_annotations(DATA_ROOT, "C1")
+    """Load annotations and print frame, identity, and ground-plane ranges."""
+    args = _parse_args()
+    cam_id = normalize_cam_id(args.cam)
+    frame = load_annotations(DATA_ROOT, cam_id)
     timeline = (
-        frame[["frame_idx", "frame_number", "time_sec"]]
-        .drop_duplicates()
-        .sort_values("frame_idx")
+        frame[["frame_idx", "frame_number", "time_sec"]].drop_duplicates().sort_values("frame_idx")
     )
     filename_steps = timeline["frame_number"].diff().dropna().unique()
     time_steps = timeline["time_sec"].diff().dropna().unique()
@@ -30,6 +44,7 @@ def main() -> None:
         .reindex(range(n_frames), fill_value=0)
     )
 
+    print(f"Camera: {cam_id}")
     print(f"Frames: {n_frames}")
     print(f"Detected filename spacing: {[int(step) for step in filename_steps]}")
     print(f"Detected time spacing (s): {[float(step) for step in time_steps]}")
@@ -38,7 +53,7 @@ def main() -> None:
     print(f"X_m min/max: {frame['X_m'].min():.4f} / {frame['X_m'].max():.4f}")
     print(f"Y_m min/max: {frame['Y_m'].min():.4f} / {frame['Y_m'].max():.4f}")
     print(
-        "People visible in C1 per frame: "
+        f"People visible in {cam_id} per frame: "
         f"mean {visible_per_frame.mean():.4f}, "
         f"min {int(visible_per_frame.min())}, "
         f"max {int(visible_per_frame.max())}"

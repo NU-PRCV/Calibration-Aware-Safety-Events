@@ -6,7 +6,6 @@ import math
 
 import numpy as np
 import pandas as pd
-
 from src.data import project_root
 from src.evaluation import (
     covered_interval,
@@ -81,9 +80,7 @@ def test_one_frame_event_matches_itself() -> None:
     lo, hi = covered_interval(1.0, 1.0, FRAME_DT)
     assert hi - lo == FRAME_DT
 
-    pairs, unmatched_gt, unmatched_pred = match_events(
-        events, events, "zone", frame_dt=FRAME_DT
-    )
+    pairs, unmatched_gt, unmatched_pred = match_events(events, events, "zone", frame_dt=FRAME_DT)
     assert len(pairs) == 1
     assert pairs[0]["temporal_iou"] == 1.0
     assert pairs[0]["start_delay"] == 0.0

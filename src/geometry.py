@@ -186,7 +186,9 @@ def normalized_dlt(src_pts: np.ndarray, dst_pts: np.ndarray) -> np.ndarray:
     src = np.asarray(src_pts, dtype=np.float64)
     dst = np.asarray(dst_pts, dtype=np.float64)
     if src.shape != dst.shape or src.ndim != 2 or src.shape[1] != 2:
-        raise ValueError(f"src_pts and dst_pts must both have shape (N, 2), got {src.shape} and {dst.shape}")
+        raise ValueError(
+            f"src_pts and dst_pts must both have shape (N, 2), got {src.shape} and {dst.shape}"
+        )
     if len(src) < 4:
         raise ValueError(f"Normalized DLT needs at least 4 correspondences, got {len(src)}")
     src_n, src_transform = _similarity_normalize(src)
@@ -268,7 +270,9 @@ def ransac_homography_exhaustive(
     src = np.asarray(pixels, dtype=np.float64)
     dst = np.asarray(world_pts, dtype=np.float64)
     if src.shape != dst.shape or src.ndim != 2 or src.shape[1] != 2:
-        raise ValueError(f"pixels and world_pts must both have shape (N, 2), got {src.shape} and {dst.shape}")
+        raise ValueError(
+            f"pixels and world_pts must both have shape (N, 2), got {src.shape} and {dst.shape}"
+        )
     n_points = len(src)
     if n_points < 4:
         raise ValueError(f"RANSAC needs at least 4 correspondences, got {n_points}")

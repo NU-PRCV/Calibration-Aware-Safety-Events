@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Sweep calibration noise vs number of calibration points on GT tracks.
 
-Layouts n4 / n6 / n8 / n12 all sit inside the same wide ground rectangle.
-Each trial perturbs every calibration pixel by exactly eps px, re-estimates H
-with normalized DLT (least squares for N > 4), and reuses run_trial for
-projection, event detection, and scoring. Existing sweep CSV files are not
-modified. Pass --cam C6 for the second-camera study (n4 and n12 only).
+Layouts n4 / n6 / n8 / n12 share the camera's wide rectangle (C6 defaults to
+n4 and n12 only). Each trial perturbs every calibration pixel by exactly eps px.
+
+Inputs:  configs/events.yaml or events_<cam>.yaml; annotations; gt_events_<cam>.csv
+Outputs: outputs/sweep_<cam>_npoints.csv and F1 / position-error plots.
+
+Example:
+    python scripts/run_sweep_npoints.py --cam C1
+    python scripts/run_sweep_npoints.py --cam C6
 """
 
 from __future__ import annotations
@@ -28,7 +32,13 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data import DATA_ROOT, load_annotations, normalize_cam_id, project_root, resolve_dataset_root
+from src.data import (
+    DATA_ROOT,
+    load_annotations,
+    normalize_cam_id,
+    project_root,
+    resolve_dataset_root,
+)
 from src.events import event_config_path, load_event_config
 from src.perturb import _first_frame, choose_calibration_points, run_trial
 
@@ -78,10 +88,7 @@ def _worker(job: tuple[str, float, int]) -> dict[str, Any]:
 
 def _jobs(layouts: tuple[str, ...]) -> list[tuple[str, float, int]]:
     return [
-        (layout, float(eps_px), seed)
-        for layout in layouts
-        for eps_px in EPS_PX
-        for seed in SEEDS
+        (layout, float(eps_px), seed) for layout in layouts for eps_px in EPS_PX for seed in SEEDS
     ]
 
 
@@ -94,7 +101,11 @@ def _run_sweep(
     timed_result: dict[str, Any],
     layouts: tuple[str, ...],
 ) -> list[dict[str, Any]]:
-    timed_key = (str(timed_result["layout"]), float(timed_result["eps_px"]), int(timed_result["seed"]))
+    timed_key = (
+        str(timed_result["layout"]),
+        float(timed_result["eps_px"]),
+        int(timed_result["seed"]),
+    )
     pending = [job for job in _jobs(layouts) if job != timed_key]
     results = [timed_result]
     initargs = (cam_id, tracks, events, cfg)
@@ -146,13 +157,12 @@ def _print_summary(frame: pd.DataFrame, layouts: tuple[str, ...]) -> None:
     print(f"\n{N_TRIALS} trials at each eps, seeds {SEEDS[0]}..{SEEDS[-1]}")
     for layout in layouts:
         print(f"\n{layout}")
-        print(
-            f"  {'eps':>5}  "
-            f"{'F1z':>7} {'F1d':>7} {'F1p':>7}  "
-            f"{'pos_mean':>9}"
-        )
+        print(f"  {'eps':>5}  {'F1z':>7} {'F1d':>7} {'F1p':>7}  {'pos_mean':>9}")
         for eps_px in EPS_PX:
-            f1 = {et: float(np.mean(_group_values(frame, layout, float(eps_px), f"f1_{et}"))) for et in EVENT_TYPES}
+            f1 = {
+                et: float(np.mean(_group_values(frame, layout, float(eps_px), f"f1_{et}")))
+                for et in EVENT_TYPES
+            }
             pos = float(np.mean(_group_values(frame, layout, float(eps_px), "pos_mean_m")))
             print(
                 f"  {eps_px:5g}  "
@@ -204,7 +214,9 @@ def _plot_f1(frame: pd.DataFrame, path: Path, cam_id: str, layouts: tuple[str, .
     print(f"Saved {path.name}")
 
 
-def _plot_position_error(frame: pd.DataFrame, path: Path, cam_id: str, layouts: tuple[str, ...]) -> None:
+def _plot_position_error(
+    frame: pd.DataFrame, path: Path, cam_id: str, layouts: tuple[str, ...]
+) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
     for layout in layouts:
         ys = _curve(frame, layout, "pos_mean_m")
