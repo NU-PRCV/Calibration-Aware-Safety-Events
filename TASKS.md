@@ -57,6 +57,6 @@ When a task is done, replace ☐ with ✅, and add a short note if something cha
 
 | Done | Task | Owner | Due | Notes |
 |:---:|---|:---:|:---:|---|
-| ☐ | Share the Overleaf project with Tejaswini as editor | D | Nov 24 | |
-| ☐ | Send Tejaswini this list and the Dec 1 date | D | Nov 24 | |
+| ✅  | Share the Overleaf project with Tejaswini as editor | D | Nov 24 | |
+| ✅  | Send Tejaswini this list and the Dec 1 date | D | Nov 24 | |
 | ☐ | Check in on progress | D + T | Nov 28 | |
