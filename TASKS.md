@@ -17,14 +17,14 @@ When a task is done, replace ☐ with ✅, and add a short note if something cha
 | ☐ | Review and expand "Perception stack" (Section 3.5) | T | Dec 1 | |
 | ☐ | Review the perception error budget (Section 4.6) | T | Dec 1 | |
 | ☐ | Pose-based foot points: results paragraph (optional) | T | Dec 1 | If not done by Dec 1, move to future work |
-| ☐ | Conclusion: discussion and future work | D | Dec 2 | |
+| ☐ | Conclusion: discussion and future work | T | Dec 2 | |
 | ☐ | Fill in the repo link in the open-source paragraph | D | Dec 2 | |
 | ☐ | Check all references against the original papers | D + T | Dec 3 | Split the list in half |
-| ☐ | Trim to 8 pages (excluding references) | D | Dec 4 | After all text is in |
-| ☐ | Final figure and table captions; no TODOs left | D | Dec 4 | |
+| ☐ | Trim to 8 pages (excluding references) | D + T | Dec 4 | After all text is in |
+| ☐ | Final figure and table captions; no TODOs left | D + T | Dec 4 | |
 | ☐ | Read through the whole paper for flow and wording | D + T | Dec 5 | |
-| ☐ | Hide the red owner markers (`\newcommand{\owner}[1]{}`) | D | Dec 6 | |
-| ☐ | Add an AI-assistance note if the course policy requires it | D | Dec 6 | Check the syllabus |
+| ☐ | Hide the red owner markers (`\newcommand{\owner}[1]{}`) | T | Dec 6 | |
+| ☐ | Add an AI-assistance note if the course policy requires it | D + T | Dec 6 | Check the syllabus |
 | ☐ | Download the final PDF and submit | D | Dec 8 | |
 
 ## Presentation
@@ -35,7 +35,7 @@ When a task is done, replace ☐ with ✅, and add a short note if something cha
 | ☐ | Slides: problem, method, calibration results, mitigations, guideline | D | Dec 5 | Reuse report figures |
 | ☐ | Slides: detection, tracking and perception results | T | Dec 5 | |
 | ☐ | Demo video of the Streamlit app (2–3 min) | D | Dec 6 | `streamlit run app/demo.py` |
-| ☐ | Record the presentation | D + T | Dec 7 | |
+| ☐ | Record the presentation | D | Dec 7 | |
 | ☐ | Submit the recording | D | Dec 8 | |
 
 ## Code and repository
