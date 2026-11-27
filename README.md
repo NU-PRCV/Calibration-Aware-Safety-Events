@@ -249,12 +249,14 @@ src/
   events.py           shared hysteresis function; zone, dwell, proximity detection
   evaluation.py       event matching and precision / recall / F1
   perturb.py          calibration points, pixel perturbation, single trial
-  tracking.py         frame list, detection/track CSV format, tracker wrappers, tracking scores
+  tracking.py         frame list, detection/track CSV format, tracker wrappers, tracking scores,
+                      pose-based foot points (ankle midpoint, box fallback)
   viz.py              plots and overlays
 scripts/              runnable checks and experiments (below)
 tests/                pytest suite
 data/                 dataset (gitignored)
-results/              detection and track CSVs, id maps, tracking summary (committed, small)
+results/              detection and track CSVs, id maps, tracking summary (committed, small);
+                      optional pose runs go to results/detections_pose/ and results/tracks_pose/
 outputs/              results and plots (gitignored)
 docs/figures/         selected plots committed for this README
 ```
@@ -305,6 +307,12 @@ python scripts/check_tracks.py                 # → results/tracks/tracking_sum
                                                #   overlays → outputs/tracks/
 python scripts/diagnose_foot_points.py         # perception error budget → outputs/tracks/
 
+# 5b. Optional: pose-based foot points (own folders, so the main results above are untouched)
+python scripts/run_pose_detection.py           # → results/detections_pose/det_C1_{yolo11n,yolo11x}-pose.csv
+python scripts/run_tracking.py --det-dir results/detections_pose --out-dir results/tracks_pose
+python scripts/check_tracks.py --tracks-dir results/tracks_pose
+python scripts/run_events_on_tracks.py --tracks-dir results/tracks_pose --out outputs/events_on_tracks_C1_pose.csv
+
 # 6. Events on predicted tracks, then the calibration sweep on them
 python scripts/run_events_on_tracks.py    # → outputs/events_on_tracks_C1.csv
 python scripts/run_sweep_tracks.py        # → outputs/sweep_C1_pred_tracks.csv and plots (checks eps = 0 against step 6)
@@ -321,7 +329,7 @@ python scripts/compare_C1_C6.py           # → outputs/compare_C1_C6.csv, f1_vs
 # 8. All report figures and tables from the saved CSVs → outputs/report/
 python scripts/make_report_figures.py
 
-# Tests (76)
+# Tests (86)
 python -m pytest
 ```
 
@@ -364,8 +372,11 @@ Dwell fires when a zone visit lasts at least `dwell_seconds`; the alarm starts a
 | `track_id` | tracker's ID for the person (not a ground-truth `person_id`) |
 | `xmin, ymin, xmax, ymax` | box corners in pixels |
 | `score` | detector confidence of the matched box |
+| `foot_u, foot_v, foot_source` | optional, pose runs only: foot pixel and whether it came from the `ankles` or the `box` |
 
 **Scoring tracks.** The foot point is the bottom-center of the box, `((xmin + xmax) / 2, ymax)`, projected with *H\**. Predictions are matched to ground-truth positions per frame (Hungarian, ≤ 0.5 m). Matching uses the full annotated area, but counts use an inner area shrunk by 1 m (`--boundary-margin`), because real but unannotated people stand just outside the area. Box IoU (≥ 0.5) is reported as a secondary score.
+
+**Pose-based foot points (optional).** `run_pose_detection.py` runs YOLO11n-pose and YOLO11x-pose with the same detection settings. The foot point is the midpoint of the two ankle keypoints (COCO 15 and 16) when both have confidence ≥ 0.5 (`--ankle-conf`), and the box bottom-center otherwise. The trackers pass boxes only, so `run_tracking.py` links each track box back to its detection (IoU ≥ 0.9) to keep its foot point. Ankles sit a few centimeters above the floor, so the plain midpoint lands slightly too far from the camera; `--ankle-shift` moves it down by a fraction of the box height (default 0). `--ankle-conf 1.1` forces the box fallback for every person, which separates the pose detector's own effect from the foot point's.
 
 **Linking tracks to people.** `idmap_C1_<detector>_<tracker>.csv` maps each track to the person it matched most often, with its purity. Tracks that never match get a unique negative `person_id` (`-track_id`). `relabel_tracks` keeps the higher-score row when two tracks map to the same person in one frame. The id map stays fixed during the calibration sweep.
 
