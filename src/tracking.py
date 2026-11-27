@@ -6,6 +6,10 @@ inputs and outputs in one shared format so the event code can read them:
     detections CSV: frame_idx, frame_number, time_sec, xmin, ymin, xmax, ymax, score
     tracks CSV:     frame_idx, frame_number, time_sec, track_id, xmin, ymin, xmax, ymax, score
 
+Either table may also carry foot_u, foot_v and foot_source (pose-based foot
+points, see run_pose_detection.py). Where foot_u and foot_v are set, they are
+used as the foot pixel instead of the box bottom-center.
+
 Boxes are in pixels of the original 1920 x 1080 image. frame_idx, frame_number
 and time_sec follow src.data.load_annotations, so a track row and a ground-truth
 row with the same frame_idx describe the same image.
@@ -59,6 +63,15 @@ TRACK_COLUMNS = [
     "ymax",
     "score",
 ]
+# Optional pose-based foot point. foot_source is "ankles" or "box" (the fallback).
+FOOT_COLUMNS = ["foot_u", "foot_v", "foot_source"]
+# COCO keypoint order used by the YOLO pose models.
+LEFT_ANKLE = 15
+RIGHT_ANKLE = 16
+ANKLE_MIN_CONF = 0.5
+# A track box is linked back to the detection it came from when their IoU is
+# at least this. Both trackers return the detection's own box, so IoU is ~1.
+FOOT_LINK_IOU = 0.9
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 # COCO class 0 is "person".
 PERSON_CLASS_ID = 0
@@ -399,12 +412,101 @@ def _h_img_to_world(cam_id: str | int) -> np.ndarray:
     return homography
 
 
-def foot_points_world(tracks: pd.DataFrame, cam_id: str | int) -> pd.DataFrame:
-    """Project each box's bottom-center onto the ground plane.
+def foot_pixels(table: pd.DataFrame) -> np.ndarray:
+    """Foot pixel (u, v) of every row, shape (N, 2).
 
-    The foot point is ((xmin + xmax) / 2, ymax) in pixels. It is mapped with
-    image_to_world and H*, the ground-truth homography. Adds X_m and Y_m in
-    meters and does not modify the caller's table.
+    The default is the box bottom-center ((xmin + xmax) / 2, ymax). If the
+    table has foot_u and foot_v, those are used on every row where both are
+    set; rows where they are missing (NaN) keep the bottom-center.
+    """
+    _check_columns(table, ["xmin", "xmax", "ymax"], "tracks")
+    u = (table["xmin"].to_numpy(dtype=np.float64) + table["xmax"].to_numpy(dtype=np.float64)) / 2.0
+    v = table["ymax"].to_numpy(dtype=np.float64)
+    if "foot_u" in table.columns and "foot_v" in table.columns:
+        foot_u = pd.to_numeric(table["foot_u"], errors="coerce").to_numpy(dtype=np.float64)
+        foot_v = pd.to_numeric(table["foot_v"], errors="coerce").to_numpy(dtype=np.float64)
+        use = np.isfinite(foot_u) & np.isfinite(foot_v)
+        u = np.where(use, foot_u, u)
+        v = np.where(use, foot_v, v)
+    return np.column_stack([u, v])
+
+
+def pose_foot_points(
+    boxes: np.ndarray,
+    keypoints_xy: np.ndarray | None,
+    keypoints_conf: np.ndarray | None,
+    min_conf: float = ANKLE_MIN_CONF,
+    ankle_shift: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Foot pixel from the two ankles, or the box bottom-center as a fallback.
+
+    boxes is (N, 4) xyxy, keypoints_xy (N, 17, 2) and keypoints_conf (N, 17)
+    in COCO order. When both ankles have confidence >= min_conf, the foot is
+    their midpoint; otherwise it is the box bottom-center. ankle_shift moves
+    the ankle midpoint down by that fraction of the box height, because the
+    ankles sit a few centimeters above the floor (0 keeps the plain midpoint).
+    Returns the (N, 2) foot pixels and an (N,) array of "ankles" or "box".
+    """
+    box = np.asarray(boxes, dtype=np.float64).reshape(-1, 4)
+    count = len(box)
+    feet = np.column_stack([(box[:, 0] + box[:, 2]) / 2.0, box[:, 3]])
+    source = np.full(count, "box", dtype=object)
+    if count == 0 or keypoints_xy is None or keypoints_conf is None:
+        return feet, source
+    points = np.asarray(keypoints_xy, dtype=np.float64).reshape(count, -1, 2)
+    conf = np.asarray(keypoints_conf, dtype=np.float64).reshape(count, -1)
+    if points.shape[1] <= RIGHT_ANKLE or conf.shape[1] <= RIGHT_ANKLE:
+        return feet, source
+    both = (conf[:, LEFT_ANKLE] >= min_conf) & (conf[:, RIGHT_ANKLE] >= min_conf)
+    middle = (points[:, LEFT_ANKLE] + points[:, RIGHT_ANKLE]) / 2.0
+    middle[:, 1] += float(ankle_shift) * (box[:, 3] - box[:, 1])
+    feet[both] = middle[both]
+    source[both] = "ankles"
+    return feet, source
+
+
+def attach_foot_points(
+    tracks: pd.DataFrame, detections: pd.DataFrame, min_iou: float = FOOT_LINK_IOU
+) -> pd.DataFrame:
+    """Copy each detection's foot point onto the track row that came from it.
+
+    The trackers pass boxes only, so every track box is linked back to the
+    detection in the same frame with the highest IoU (at least min_iou).
+    Track rows with no linked detection get NaN foot_u / foot_v, so
+    foot_pixels falls back to the track's own box bottom-center.
+    """
+    out = tracks.copy()
+    out["foot_u"] = np.nan
+    out["foot_v"] = np.nan
+    out["foot_source"] = "box"
+    if out.empty or detections.empty or "foot_u" not in detections.columns:
+        return out
+    box_cols = ["xmin", "ymin", "xmax", "ymax"]
+    by_frame = {int(key): group for key, group in detections.groupby("frame_idx", sort=False)}
+    for frame_idx, group in out.groupby("frame_idx", sort=False):
+        candidates = by_frame.get(int(frame_idx))
+        if candidates is None:
+            continue
+        iou = box_iou(group[box_cols].to_numpy(), candidates[box_cols].to_numpy())
+        best = iou.argmax(axis=1)
+        linked = iou[np.arange(len(group)), best] >= min_iou
+        if not linked.any():
+            continue
+        chosen = candidates.iloc[best[linked]]
+        rows = group.index[linked]
+        out.loc[rows, "foot_u"] = chosen["foot_u"].to_numpy(dtype=np.float64)
+        out.loc[rows, "foot_v"] = chosen["foot_v"].to_numpy(dtype=np.float64)
+        out.loc[rows, "foot_source"] = chosen["foot_source"].to_numpy()
+    return out
+
+
+def foot_points_world(tracks: pd.DataFrame, cam_id: str | int) -> pd.DataFrame:
+    """Project each row's foot pixel onto the ground plane.
+
+    The foot pixel comes from foot_pixels: the box bottom-center
+    ((xmin + xmax) / 2, ymax), or the pose-based foot_u / foot_v where set.
+    It is mapped with image_to_world and H*, the ground-truth homography.
+    Adds X_m and Y_m in meters and does not modify the caller's table.
     """
     _check_columns(tracks, ["xmin", "xmax", "ymax"], "tracks")
     out = tracks.copy()
@@ -414,12 +516,7 @@ def foot_points_world(tracks: pd.DataFrame, cam_id: str | int) -> pd.DataFrame:
         return out
     from src.geometry import image_to_world
 
-    feet = np.column_stack(
-        [
-            (out["xmin"].to_numpy(dtype=np.float64) + out["xmax"].to_numpy(dtype=np.float64)) / 2.0,
-            out["ymax"].to_numpy(dtype=np.float64),
-        ]
-    )
+    feet = foot_pixels(out)
     world = image_to_world(_h_img_to_world(cam_id), feet)
     out["X_m"] = world[:, 0]
     out["Y_m"] = world[:, 1]

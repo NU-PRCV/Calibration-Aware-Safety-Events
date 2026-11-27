@@ -3,7 +3,9 @@
 
 Reads results/detections/det_<cam>_<model>.csv and writes
 results/tracks/tracks_<cam>_<model>_<tracker>.csv, so 2 detectors and
-2 trackers give 4 track files.
+2 trackers give 4 track files. If the detections carry pose-based foot points
+(foot_u, foot_v, foot_source from run_pose_detection.py), each track row keeps
+the foot point of the detection it came from.2 trackers give 4 track files.
 
 Example:
     python scripts/run_tracking.py --cam C1 --trackers bytetrack deepsort
@@ -22,9 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.data import ANNOTATED_FPS, DATA_ROOT, normalize_cam_id, project_root
 from src.tracking import (
+    FOOT_COLUMNS,
     TRACK_COLUMNS,
     TRACKERS,
     annotated_frames,
+    attach_foot_points,
     make_tracker,
     run_tracker,
     save_csv,
@@ -71,9 +75,19 @@ def main() -> None:
             tracks = run_tracker(detections, used_frames, tracker)
             seconds = time.perf_counter() - start
             validate_tracks(tracks)
+            columns = TRACK_COLUMNS
+            if "foot_u" in detections.columns:
+                tracks = attach_foot_points(tracks, detections)
+                columns = TRACK_COLUMNS + FOOT_COLUMNS
+                linked = float(tracks["foot_u"].notna().mean()) if len(tracks) else 0.0
+                ankles = float((tracks["foot_source"] == "ankles").mean()) if len(tracks) else 0.0
+                print(
+                    f"{model} + {tracker_name}: {100.0 * linked:.1f}% of rows linked to a "
+                    f"detection, {100.0 * ankles:.1f}% use the ankles"
+                )
             out = save_csv(
                 tracks,
-                TRACK_COLUMNS,
+                columns,
                 Path(args.out_dir) / f"tracks_{cam_id}_{model}_{tracker_name}.csv",
             )
             print(

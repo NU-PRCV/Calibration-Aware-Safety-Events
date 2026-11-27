@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_BOUNDARY_MARGIN_M,
         help="meters to shrink the ground area before proximity detection (default 1.0)",
     )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="output CSV (default outputs/events_on_tracks_<cam>.csv); "
+        "use a different name for the pose tracks so the main results are kept",
+    )
     return parser.parse_args()
 
 
@@ -428,7 +434,9 @@ def main() -> None:
     print(side_by_side.to_string(index=False, float_format=lambda value: f"{value:.3f}"))
 
     saved = pd.concat([identity, anonymous], ignore_index=True)
-    out = project_root() / "outputs" / f"events_on_tracks_{cam_id}.csv"
+    default_out = project_root() / "outputs" / f"events_on_tracks_{cam_id}.csv"
+    out = Path(args.out) if args.out else default_out
+    out.parent.mkdir(parents=True, exist_ok=True)
     saved.to_csv(out, index=False, float_format="%.4f")
     print(f"\nSaved {out.name} ({len(identity)} identity + {len(anonymous)} anonymous rows)")
 
