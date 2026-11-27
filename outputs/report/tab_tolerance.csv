@@ -1,0 +1,4 @@
+event_type,eps_mean_n4,eps_mean_n6,eps_mean_n8,eps_mean_n12,eps_p5_n4,eps_p5_n6,eps_p5_n8,eps_p5_n12
+zone,5.0,5.0,10.0,10.0,3.0,5.0,5.0,5.0
+dwell,1.0,2.0,2.0,3.0,0.0,1.0,1.0,1.0
+proximity,10.0,10.0,10.0,10.0,5.0,5.0,5.0,10.0

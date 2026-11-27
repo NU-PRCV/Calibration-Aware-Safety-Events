@@ -1,0 +1,5 @@
+model,precision,recall,id_switches,mota
+YOLO11n + ByteTrack,0.7746,0.4101,442,0.2287
+YOLO11n + DeepSORT,0.749,0.4518,329,0.2541
+YOLO11x + ByteTrack,0.7194,0.4119,472,0.1855
+YOLO11x + DeepSORT,0.6999,0.4462,296,0.2136

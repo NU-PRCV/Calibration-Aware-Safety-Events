@@ -1,5 +1,7 @@
 data/
-outputs/
+outputs/*
+!outputs/report/
+!outputs/gt_events_*.csv
 __pycache__/
 **/__pycache__/
 *.py[cod]

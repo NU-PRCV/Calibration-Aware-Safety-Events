@@ -1,0 +1,4 @@
+event_type,C1_pos_m_f1_ge_0.95,C6_pos_m_f1_ge_0.95,guideline_m
+zone,0.299388,0.260304,0.25
+dwell,0.071789,0.061201,0.06
+proximity,0.431008,0.439416,0.4
